@@ -1,6 +1,6 @@
 ---
 name: cpp-rules
-description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp、.cc 文件）时使用。提供强制性编码规范，涵盖内存管理、安全、命名约定、OOP 设计、跨平台兼容性、头文件、多线程、日志及禁用模式。当用户创建、修改或要求审查 C++ 源文件时激活。
+description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp、.cc 文件）时使用。提供强制性编码规范，涵盖内存管理、安全、命名约定、OOP 设计、跨平台兼容性、头文件、多线程、现代 C++ 惯用法、代码复杂度、日志及禁用模式。当用户创建、修改或要求审查 C++ 源文件时激活。
 ---
 
 # C++ 编码规范强制执行
@@ -74,7 +74,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 ### THREAD：多线程与 Lambda
 
 - **THREAD-001**：Lambda 捕获必须显式书写，禁止 `[=]` 全隐式值捕获
-- **THREAD-002**：线程创建统一用 `std::thread`（C++20 优先 `std::jthread`——自动 join + 可中断停止令牌），禁止 OS 原生线程 API
+- **THREAD-002**：线程创建统一用 `std::thread`，禁止 OS 原生线程 API
 - **THREAD-003**：共享成员变量读写必须通过 `std::mutex` / `std::shared_mutex` 加锁保护；简单数值可用 `std::atomic` 替代
 - **THREAD-004**：条件变量 `wait` 必须在 `while` 循环中检查条件，**禁止 `if`**——`if` 无法防御虚假唤醒（spurious wakeup），导致间歇性错误唤醒后继续执行
   > `cv.wait(lk, [&]{ return condition; });` 是等价的安全写法，等效于 while 循环 + 谓词。
@@ -91,7 +91,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **BAN-004**：业务接口禁止 `va_list` / `va_arg`，用 `std::format` / 模板参数包替代
 - **BAN-005**：禁止函数式宏，常量用 `constexpr`，工具函数用 `inline` / 模板
 
-### SEC.A：内存安全
+### SEC-A：内存安全
 
 - **SEC-A01**：禁止不安全的 C 字符串函数——`strcpy` / `strcat` / `sprintf` / `gets` / `scanf` 系列。统一使用安全替代：`strcpy_s` / `strcat_s` / `snprintf` 或直接使用 `std::string` / `std::format`
   > 缓冲区溢出是 CWE Top 1，此类函数无法限制目标缓冲区长度，是最高频安全漏洞来源。
@@ -99,15 +99,15 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
   > 越界访问在安全审计中占比极高，`.at()` 将未定义行为转为可捕获异常。
 - **SEC-A03**：禁止 `alloca` / `_alloca` / VLA（变长数组）——栈空间不可控，恶意输入可导致栈溢出。用 `std::vector` 或 `std::make_unique<T[]>` 替代
 
-### SEC.B：类型安全
+### SEC-B：类型安全
 
-- **SEC-B01**：禁止在数组索引、内存大小计算（如 `malloc`/`new[]` 参数）、循环边界条件中混合有符号/无符号整数运算；必须显式转换并验证非负
+- **SEC-B01**：禁止在数组索引、内存大小计算（如 `new[]` 参数）、循环边界条件中混合有符号/无符号整数运算；必须显式转换并验证非负
   > 有符号与无符号混合运算时，负数会被隐式转换为巨大正数，导致缓冲区溢出或死循环。
 - **SEC-B02**：禁止对 `const` 对象使用 `std::move`——不会触发移动语义（实际调用拷贝构造/赋值），属于无效且有欺骗性的代码
   > `const T&&` 无法绑定到 `T&&` 移动构造函数，退化为 `const T&` 拷贝。
 - **SEC-B03**：`reinterpret_cast` 使用处必须附带注释说明转换目的、安全保证及替代方案为何不可行。本条落实 BAN-002 中"严格管控"的要求
 
-### SEC.C：输入安全
+### SEC-C：输入安全
 
 - **SEC-C01**：禁止格式化字符串来自用户输入或外部可控数据
   > `printf(userInput)` 或 `fprintf(fp, externalStr)` 是经典格式化字符串漏洞，可导致任意内存读写。仅允许 `printf("%s", userInput)` 形式。
@@ -134,7 +134,6 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 ### CTR：容器与字符串
 
 - **CTR-001**：动态数组 `std::vector`；无序键值 `std::unordered_map`；字符串 `std::string` / `string_view` 禁止 `char*`
-  > 容器插入优先 `emplace_back` / `emplace` 原位构造，避免临时对象拷贝。
 
 ### MAGIC：魔法数字
 
@@ -174,8 +173,8 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **MODERN-002**：优先 `std::optional` / `std::variant` / `std::expected`（C++23）替代哨兵值（`-1`/`nullptr`/空状态）和输出参数——类型系统直接编码"有/无"语义，消除遗漏检查的风险
 - **MODERN-003**：C++20 项目优先使用 `std::span<T>` 替代 `T* + size_t` 参数对——`span` 自带边界信息，消除缓冲区越界这类 bug 的根源
   > `std::span` 同样是非拥有型观查视图，不管理底层数据生命周期。
-- **MODERN-004**：优先使用 Ranges（`std::ranges::sort(v)`、`v \| filter \| transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
-- **MODERN-005**：编译期条件分支优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch——代码更直观，错误消息更友好
+- **MODERN-004**：优先使用 Ranges（`std::ranges::sort(v)`、`v | filter | transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
+- **MODERN-005**：编译期条件分支：C++17 优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch；C++20 优先使用 concepts 替代 SFINAE——代码更直观，错误消息更友好
 
 ### CPLX：代码复杂度与可维护性（warning）
 
@@ -203,9 +202,10 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 ### Blocker 检查
 - [x] MEM：内存与指针 —— 通过
 - [x] NAME：命名规范 —— 通过
-- [x] SEC.A：内存安全 —— 通过
-- [x] SEC.B：类型安全 —— 通过
-- [x] SEC.C：输入安全 —— 通过
+- [x] SEC-A：内存安全 —— 通过
+- [x] SEC-B：类型安全 —— 通过
+- [x] SEC-C：输入安全 —— 通过
+- [x] MODERN：现代 C++ 惯用法 —— 通过
 - [ ] OOP：类设计 —— OOP-001：基类 `Parser` 有虚函数但析构函数非虚
 - ...
 
