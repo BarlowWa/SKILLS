@@ -148,6 +148,11 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 - **BUILD-001**：编译启用 `-Werror`，所有警告清零；合理使用 `constexpr` 将常量/计算下沉至编译期
 
+### MODERN：现代 C++ 惯用法
+
+- **MODERN-001**：`std::string_view` 禁止绑定到已析构的临时 `std::string` 或超出生命周期的局部对象；禁止从函数返回指向局部变量的 `string_view`；跨函数传递时必须明确底层所有者的生命周期
+  > `string_view` 是非拥有型引用，引用对象析构后继续使用会导致 use-after-free。常见陷阱：`return s + suffix;` 返回 `string_view`（临时 `std::string` 被析构）。
+
 ---
 
 ## Warning 检查清单
@@ -163,6 +168,23 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **THREAD-007**：C++20 项目优先 `std::jthread` 替代 `std::thread`——`jthread` 析构时自动 join（防止 `std::terminate`），并支持 `stop_token` 协作式中断
 - **THREAD-008**：`std::atomic` 非 `std::memory_order_seq_cst` 的内存序必须注释说明选择理由；默认 `seq_cst` 对绝大多数场景足够且正确
 - **THREAD-009**：自建线程池/任务队列必须有明确的 shutdown 生命周期：析构函数等待所有已提交任务完成、拒绝新任务、正确 join 所有工作线程
+
+### MODERN-W：现代 C++ 惯用法（warning）
+
+- **MODERN-002**：优先 `std::optional` / `std::variant` / `std::expected`（C++23）替代哨兵值（`-1`/`nullptr`/空状态）和输出参数——类型系统直接编码"有/无"语义，消除遗漏检查的风险
+- **MODERN-003**：C++20 项目优先使用 `std::span<T>` 替代 `T* + size_t` 参数对——`span` 自带边界信息，消除缓冲区越界这类 bug 的根源
+  > `std::span` 同样是非拥有型观查视图，不管理底层数据生命周期。
+- **MODERN-004**：优先使用 Ranges（`std::ranges::sort(v)`、`v \| filter \| transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
+- **MODERN-005**：编译期条件分支优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch——代码更直观，错误消息更友好
+
+### CPLX：代码复杂度与可维护性（warning）
+
+> 本类别不替代 SonarQube / clang-tidy 等工具的定量指标检测，专注于工具难以完成的语义判断。
+
+- **CPLX-001**：逻辑重复检测——识别不同位置（可能不同变量名/类型）但语义等价或高度相似的代码块，建议提取公共函数。工具只能检测文本重复，LLM 可发现结构性重复
+- **CPLX-002**：参数簇识别——若一组参数（如 `x1, y1, x2, y2` 坐标、`host, port, timeout` 连接配置）在多个函数签名中成组出现，应封装为结构体，减少接口复杂度并降低传参顺序错误风险
+- **CPLX-003**：函数职责单一性——识别"做了多件不相关事情"的函数（如一个函数内同时包含数据解析、业务计算和文件 I/O），建议拆分以提升可测试性
+- **CPLX-004**：嵌套深度 >4 层时建议早返回（early return）或提取子函数重构——不机械报警（状态机等场景合理性由审查者判断），而是针对可简化场景提出具体重构建议
 
 ### PERF：性能
 
@@ -190,6 +212,8 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 ### Warning 检查
 - [x] LOG：日志 —— 通过
 - [x] THREAD-W：多线程进阶 —— 通过
+- [x] MODERN-W：现代 C++ —— 通过
+- [x] CPLX：代码复杂度 —— 通过
 - [ ] PERF：性能 —— PERF-001：`getValue()` 未标记 const
 - ...
 
