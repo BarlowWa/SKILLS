@@ -47,6 +47,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **NAME-002**：标识符禁止以下划线开头或结尾
 - **NAME-003**：函数 `camelCase`；类/结构体/枚举 `PascalCase`；宏/枚举常量 `UPPER_SNAKE_CASE`
 - **NAME-004**：纯虚抽象基类以 `I` 前缀命名（如 `IWorker`、`ILogSink`）
+- **NAME-005**：模板参数命名 PascalCase，与普通类型可区分——类型参数用描述性名称（`Key`、`Value`、`Predicate`），非类型参数用短名（`N`、`Size`），避免单字母 `T`/`U` 在非泛型含义的模板中滥用
 
 ### PLAT：跨平台与第三方依赖
 
@@ -151,6 +152,16 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 - **MODERN-001**：`std::string_view` 禁止绑定到已析构的临时 `std::string` 或超出生命周期的局部对象；禁止从函数返回指向局部变量的 `string_view`；跨函数传递时必须明确底层所有者的生命周期
   > `string_view` 是非拥有型引用，引用对象析构后继续使用会导致 use-after-free。常见陷阱：`return s + suffix;` 返回 `string_view`（临时 `std::string` 被析构）。
+
+### TPL：模板与泛型
+
+> 以下规则按 C++ 版本条件适用。标注"C++20 项目"的规则对 C++17 及以下项目不强制。
+
+- **TPL-001**：每个约束模板的 `static_assert` 必须携带对使用者有意义的诊断消息，说明"什么条件未满足"和"应如何修复"——裸 `static_assert` 仅显示表达式文本，对调用者无帮助
+  > `static_assert(std::is_integral_v<T>, "T must be an integral type, e.g., int, long, or size_t");` 是合格的消息。
+- **TPL-002**：C++20 项目禁止使用 `std::enable_if` / `std::void_t` / tag dispatch 做模板约束，统一使用 `requires` clause 或 `concept`。C++17 项目不受此限
+  > `requires` 和 `concept` 将约束从晦涩的模板错误消息中提升到接口声明层，大幅改善编译错误体验和代码可读性。
+- **TPL-003**：模板特化（全特化/偏特化）与主模板应放在同一头文件中，特化后仍有独立 ODR 使用的场景需显式声明实例化点（`extern template`）防止隐式实例化膨胀
 
 ---
 

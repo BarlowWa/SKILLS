@@ -88,6 +88,18 @@ Application / UI
 - **ARCH-018**：检查 CMake / Makefile 中 target_link_libraries 的 PUBLIC / PRIVATE / INTERFACE 使用是否合理
 - **ARCH-019**：纯头文件库（header-only lib）应有明确理由；无理由的 header-only 大型库属于 minor
 
+### 8. API/ABI 兼容性
+
+> 本维度主要适用于对外发布共享库（.so / .dll）或公开 API 的项目。纯内部单体应用可跳过本维度所有规则。ABI 精确分析建议搭配 `abidiff`（libabigail）等专用工具，本维度聚焦源码级别的风险识别。
+
+- **ARCH-020**：公开头文件中的函数签名变更（修改返回类型、增删参数、修改默认参数值）必须评估向后兼容性，记录在变更说明中。新增重载 + 保留旧签名是兼容变更的首选方式
+  > LLM 的语义理解优势：区分"加默认参数的兼容扩展"和"改中间参数类型的破坏性修改"。
+- **ARCH-021**：发布共享库的项目：已发布类中新增虚函数（影响 vtable 布局）、重排成员变量顺序（影响内存布局）、修改内联函数体（可能被调用方内联后不更新）属于 critical 风险
+  > 本条为源码级**启发式检查**，精确 ABI 差异验证需搭配 `abidiff`。LLM 可识别风险模式，但不能替代二进制级别的兼容性工具。
+- **ARCH-022**：对外二进制库必须显式控制符号导出——Windows 使用 `__declspec(dllexport/dllimport)` 宏、Linux/macOS 使用 `__attribute__((visibility("default")))`。禁止默认全导出（增大攻击面和 ABI 约束面）
+  > 检查是否有不该导出的内部符号被暴露、是否有该导出的公开 API 被遗漏。
+- **ARCH-023**：对外发布的 SDK/框架建议规划版本化接口策略——如 `inline namespace v1`/`v2` 或单独的版本化头文件目录，确保不同版本可并存。本条为 minor 级别，仅适用于有明确长期 API 稳定性需求的项目
+
 ---
 
 ## 审查输出格式
