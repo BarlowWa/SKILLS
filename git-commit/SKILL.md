@@ -26,8 +26,10 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
       - C++ 规则：.claude/skills/cpp-rules/SKILL.md
       - 数据库规则：.claude/skills/db-rules/SKILL.md
       - 架构规则：.claude/skills/cpp-arch-review/SKILL.md（仅涉及模块依赖/分层时加载）
+      - 测试规则：.claude/skills/cpp-test-review/SKILL.md（仅涉及测试文件时加载：tests/、*_test.*、*_unittest.*）
    5. 对代码变更内容进行审查：
-      - C++ 代码：对照 cpp-rules 逐条检查 blocker 和 warning
+      - C++ 生产代码：对照 cpp-rules 逐条检查 blocker 和 warning
+      - C++ 测试代码：对照 cpp-test-review 逐条检查（测试文件不应用 cpp-rules 的生产代码规则）
       - 数据库脚本：对照 db-rules 检查
       - 涉及模块依赖/分层/目录结构变更：对照 cpp-arch-review 检查
    6. 输出审查报告，列出违规项及修复建议
