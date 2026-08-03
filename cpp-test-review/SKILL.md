@@ -11,7 +11,7 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 
 - 测试目录：`tests/`、`test/`、`unittest/`、`*_test.*`、`*_unittest.*`
 - 测试框架：Google Test（gtest）、Catch2、doctest、Boost.Test 等
-- **不适用**：生产代码的编码规范（由 `cpp-rules` 负责）、模块架构审查（由 `cpp-arch-review` 负责）
+- **不适用**：生产代码的编码规范（由 `cpp-rules` 负责）、测试用例设计（由 `cpp-test-author` 负责）、模块架构审查（由 `cpp-arch-review` 负责）
 
 ## 工作流程
 
@@ -60,6 +60,8 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 
 - **COV-001**：每个被测公开接口（函数/方法）的测试集应覆盖正常路径和至少一个边界条件或异常/错误路径。禁止仅有 happy-path 的完整接口测试集
   > 仅有正常路径的测试给人以"已测试"的错觉，实际上异常分支完全未验证，是测试覆盖率中最常见的盲区。
+- **COV-003**：若存在 `cpp-test-author` 产出的用例设计清单（用例矩阵 + 未覆盖项），对照逐项核对实际测试是否落地；缺失的 BVA/ECP/BRP 覆盖需在报告中显式列出。本条衔接 `cpp-test-author`（写时设计 → 写后审查）
+  > COV-002（覆盖率阈值）见下方「COV-W：覆盖率建议」小节。
 
 ### MOCK-W：Mock 深入建议
 
@@ -114,6 +116,7 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 
 ## 豁免
 
+- 用例设计由 `cpp-test-author` 主动规划（边界值/等价类/分支路径），本技能专注落地后的质量审查；两者协同形成「先设计、后审查」闭环
 - 与已有大型遗留测试集集成时，ORG-001/002（文件组织）的目录结构改造可分期实施，新建测试必须遵守
 - 性能基准测试（benchmark）不受 TPERF-001/TPERF-002 约束，使用独立的 `*_bench.cpp` 或 `bench/` 目录
 - DET-002（实时时钟）在专门测试时间相关逻辑的 integration test 中可例外，需注释说明原因
