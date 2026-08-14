@@ -1,6 +1,6 @@
 ---
 name: cpp-rules
-description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp、.cc 文件）时使用。提供强制性编码规范，涵盖内存管理、安全、命名约定、OOP 设计、跨平台兼容性、头文件、多线程、现代 C++ 惯用法、代码复杂度、日志及禁用模式。当用户创建、修改或要求审查 C++ 源文件时激活。
+description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp、.cc、.cxx、.hh、.hxx、.ipp、.inl、.tpp 文件）时使用。提供强制性编码规范，涵盖内存管理、安全、命名约定、OOP 设计、跨平台兼容性、头文件、多线程、现代 C++ 惯用法、代码复杂度、日志及禁用模式。当用户创建、修改或要求审查 C++ 源文件时激活。测试文件（tests/、*_test.*、*_unittest.*）不适用本技能，由 cpp-test-author / cpp-test-review 负责。
 ---
 
 # C++ 编码规范强制执行
@@ -38,6 +38,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **MEM-001**：智能指针必须用 `make_unique`/`make_shared`，禁止 `new` 构造
   > 通过 `new` 构造智能指针存在异常不安全与二次分配问题。
 - **MEM-002**：禁止裸 `new`/`delete`/`delete[]`；堆内存全由智能指针/容器管理
+  > 裸 `new`/`delete` 需要手动配对，异常路径或提前 return 下极易漏配对导致泄漏/双重释放；`make_unique`/`make_shared`/容器在 RAII 下自动平衡。
 - **MEM-003**：裸指针 `T*` 仅限非拥有型观测，所有权归智能指针
   > **非拥有型观测**：仅借用作读/写窗口，不管理 pointee 生命周期、不参与释放。裸指针不管理对象生命周期；所有权场景必须使用 `std::unique_ptr` / `std::shared_ptr` / `std::weak_ptr`。C 互操作例外见『豁免』章节。
 - **MEM-004**：禁止函数返回裸指针 `T*` 作为结果——拥有型返回用 `std::unique_ptr` / `std::shared_ptr` / `std::optional`；非拥有非空返回用 `T&`；可空非拥有返回用 `std::optional<T*>`（C++17/20）或 `std::span<T>`（C++20+）；确需返回 `T*` 时必须注释说明生命周期归属（静态存储 / 成员 / 调用方传入缓冲）
@@ -49,16 +50,17 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 ### NAME：命名规范
 
-- **NAME-001**：成员 `m_`、静态 `s_`、全局 `g_`、编译期常量 `k` 前缀；POD 结构体不加前缀
+- **NAME-001**：成员 `m_`、静态 `s_`、全局 `g_`、编译期常量 `k` 前缀（枚举常量除外，见 NAME-003）；POD 结构体不加前缀
 - **NAME-002**：标识符禁止以下划线开头或结尾
 - **NAME-003**：函数 `camelCase`；类/结构体/枚举 `PascalCase`；宏/枚举常量 `UPPER_SNAKE_CASE`
+  > 枚举常量（enumerator）本身就是编译期常量，走 `UPPER_SNAKE_CASE`，不叠加 `k` 前缀，避免与 NAME-001 的"编译期常量 k 前缀"判定冲突。
 - **NAME-004**：纯虚抽象基类以 `I` 前缀命名（如 `IWorker`、`ILogSink`）
 - **NAME-005**：模板参数命名 PascalCase，与普通类型可区分——类型参数用描述性名称（`Key`、`Value`、`Predicate`），非类型参数用短名（`N`、`Size`），避免单字母 `T`/`U` 在非泛型含义的模板中滥用
 
 ### PLAT：跨平台与第三方依赖
 
 - **PLAT-001**：平台 API 必须隔离在 `Platform` 抽象层后，业务代码不得直接调用 OS 专有 API 或系统头文件
-- **PLAT-002**：使用 `<cstdint>` 定长类型（`int32_t` / `uint64_t` 等），禁止 `long` / 裸 `int`
+- **PLAT-002**：跨平台需定长语义时使用 `<cstdint>` 定长类型（`int32_t` / `uint64_t` 等）；禁止 `long`（Windows 32 位 / Linux 64 位位宽不一致）。`int` 用于索引、计数等通用场景可接受
 - **PLAT-003**：第三方原生句柄/指针必须二次封装，禁止直接暴露至业务层；禁止同时引入功能重叠的第三方库
 - **PLAT-004**：优先前向声明减少头文件包含，杜绝循环依赖
 
@@ -75,12 +77,12 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 ### HEADER：头文件
 
 - **HEADER-001**：头文件包含保护，新项目强制 `#pragma once`；存量项目若已有 `#ifndef` 守卫可保留但不再强制双重保护
-- **HEADER-002**：头文件仅放声明，实现放 `.cpp`；禁止 `using` 声明和 `using namespace`
+- **HEADER-002**：头文件仅放声明，实现放 `.cpp`（模板、`inline`、`constexpr` 等必须放头文件定义的类型除外）；头文件作用域禁止 `using namespace` 与 `using std::xxx;` 声明。`using Foo = Bar;` 类型别名不受此限
 - **HEADER-003**：头文件公开 API/类/枚举必须有 `/** @brief ... */` Doxygen，按需 `@param`、`@return`、`@note`；`.cpp` 实现文件仅用 `//` 行注释
 
 ### THREAD：多线程与 Lambda
 
-- **THREAD-001**：Lambda 捕获必须显式书写，禁止 `[=]` 全隐式值捕获
+- **THREAD-001**：Lambda 捕获必须显式书写，禁止 `[=]` / `[&]` 全隐式默认捕获（`[&]` 有引用悬垂风险，`[=]` 有隐式 `this` 悬垂风险）
 - **THREAD-002**：线程创建统一用 `std::thread`，禁止 OS 原生线程 API
 - **THREAD-003**：共享成员变量读写必须通过 `std::mutex` / `std::shared_mutex` 加锁保护；简单数值可用 `std::atomic` 替代
 - **THREAD-004**：条件变量 `wait` 必须在 `while` 循环中检查条件，**禁止 `if`**——`if` 无法防御虚假唤醒（spurious wakeup），导致间歇性错误唤醒后继续执行
@@ -104,8 +106,8 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 ### SEC-A：内存安全
 
-- **SEC-A001**：禁止不安全的 C 字符串函数——`strcpy` / `strcat` / `sprintf` / `gets` / `scanf` 系列。统一使用安全替代：`strcpy_s` / `strcat_s` / `snprintf` 或直接使用 `std::string` / `std::format`
-  > 缓冲区溢出是 CWE Top 1，此类函数无法限制目标缓冲区长度，是最高频安全漏洞来源。
+- **SEC-A001**：禁止不安全的 C 字符串函数——`strcpy` / `strcat` / `sprintf` / `gets` / `scanf` 系列。统一使用安全替代：`snprintf` 或直接使用 `std::string` / `std::format`
+  > 缓冲区溢出是 CWE Top 1，此类函数无法限制目标缓冲区长度，是最高频安全漏洞来源。注意：`strcpy_s` / `strcat_s` 属 C11 Annex K 可选项、实际为 MSVC 专属，Linux/GCC 不提供，故不作为跨平台推荐。
 - **SEC-A002**：数组/容器访问优先使用 `.at()`（带边界检查抛异常），使用 `operator[]` 时必须有前置边界验证（如 `if (index < vec.size())`）或通过上下文可证明索引安全
   > 越界访问在安全审计中占比极高，`.at()` 将未定义行为转为可捕获异常。
 - **SEC-A003**：禁止 `alloca` / `_alloca` / VLA（变长数组）——栈空间不可控，恶意输入可导致栈溢出。用 `std::vector` 或 `std::make_unique<T[]>` 替代
@@ -130,7 +132,8 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **ERR-001**：底层/工具类返回 `std::error_code`；业务逻辑可抛自定义异常；禁止无信息裸 `throw;`（`throw;` 重抛合法）
   > 自定义异常类必须携带完整描述信息。
 - **ERR-002**：析构函数、移动构造/赋值、确定不抛异常的函数必须 `noexcept`
-- **ERR-003**：所有资源必须 RAII 自动释放
+- **ERR-003**：所有资源（内存、文件句柄、锁、socket、数据库连接等）必须 RAII 自动释放，禁止依赖手写 `close`/`free`/`unlock` 配对
+  > 判据：资源的获取与释放须绑定到同一对象生命周期（构造获取、析构释放）；任何在异常或提前 return 路径下可能漏释放的裸资源管理均属违规。
 
 ### CONST：常量、传参与类型转换
 
@@ -148,11 +151,11 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 ### MAGIC：魔法数字
 
-- **MAGIC-001**：所有字面值必须是命名常量或枚举，禁止硬编码魔法数字
+- **MAGIC-001**：禁止硬编码魔法数字——有业务/领域语义的字面值必须是命名常量或枚举。`0` / `1` / `-1` / `nullptr` / `true` / `false` / 空串及上下文自明的惯用值（如 `return 0;`、`for (int i = 0; ...)`、`x == 1`）不视为魔法数字
 
 ### INIT：初始化
 
-- **INIT-001**：禁止全局裸变量/全局静态对象（规避静态初始化顺序问题）
+- **INIT-001**：禁止全局裸变量/全局静态对象（规避静态初始化顺序问题）；`constexpr` 全局常量（常量初始化、无 SIOF 风险）不受此限
 
 ### BUILD：编译
 
@@ -168,7 +171,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 > 以下规则按 C++ 版本条件适用。标注"C++20 项目"的规则对 C++17 及以下项目不强制。
 
 - **TPL-001**：每个约束模板的 `static_assert` 必须携带对使用者有意义的诊断消息，说明"什么条件未满足"和"应如何修复"——裸 `static_assert` 仅显示表达式文本，对调用者无帮助
-  > `static_assert(std::is_integral_v<T>, "T must be an integral type, e.g., int, long, or size_t");` 是合格的消息。
+  > `static_assert(std::is_integral_v<T>, "T must be an integral type, e.g., int, int64_t, or size_t");` 是合格的消息。
 - **TPL-002**：C++20 项目禁止使用 `std::enable_if` / `std::void_t` / tag dispatch 做模板约束，统一使用 `requires` clause 或 `concept`。C++17 项目不受此限
   > `requires` 和 `concept` 将约束从晦涩的模板错误消息中提升到接口声明层，大幅改善编译错误体验和代码可读性。
 - **TPL-003**：模板特化（全特化/偏特化）与主模板应放在同一头文件中，特化后仍有独立 ODR 使用的场景需显式声明实例化点（`extern template`）防止隐式实例化膨胀
@@ -264,5 +267,5 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 - 与 C 遗留库交互时，裸指针（MEM-003）、返回裸指针（MEM-004）、观测参数裸指针（MEM-005）、`void*`（BAN-006）和 C 风格强转（BAN-002）可例外，需在使用处注释说明 C 互操作需求及风险评估。
 - **测试文件不适用本技能**：测试代码（`tests/`、`*_test.*`、`*_unittest.*`）的用例设计使用 `cpp-test-author` 技能、质量审查使用 `cpp-test-review` 技能。测试文件中的 `new`（测试框架宏内部）、断言字面量、全局注册宏等在本技能规则下会误报，不应应用本技能的所有规则。
-- 性能基准测试（`*_bench.cpp`、`bench/`）同时豁免本技能和测试审查技能中与正确性相关的规则（DET/COV 类）。
+- 性能基准测试（`*_bench.cpp`、`bench/`）豁免本技能全部规则；对测试审查技能的豁免范围见 `cpp-test-review` 的豁免章节（以该技能的声明为准）。
 - 其余规则无一例外。

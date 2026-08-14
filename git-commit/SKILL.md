@@ -12,14 +12,14 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
 1. **检查状态**：运行 `git status` 和 `git diff --stat` 了解变更概览
 2. **分析差异**：对每个变更文件，读取关键差异（`git diff`），理解变更内容
 3. **生成提交信息**：基于变更内容，按 Conventional Commits 规范生成中文摘要
-4. **代码审查**：启动独立 agent 审查代码变更。仅审查代码文件（.h/.hpp/.cpp/.cc/.sql 等），对照对应技能规则检查。非代码文件跳过。
+4. **代码审查**：启动独立 agent 审查代码变更。仅审查代码文件（.h/.hpp/.cpp/.cc/.cxx/.hxx/.sql 等），对照对应技能规则检查。非代码文件跳过。
 
    审查 agent 指令：
    ```
    你是一个代码审查 agent。你的任务仅限于审查即将提交的代码变更。
 
    步骤：
-   1. 运行 `git diff HEAD` 获取待提交的变更（包含暂存+未暂存）
+   1. 运行 `git diff HEAD` 获取待提交的变更（包含暂存+未暂存）；再运行 `git ls-files --others --exclude-standard` 获取未跟踪（untracked）新文件，二者合并才是完整变更集
    2. 仅筛选代码文件：C++（.h/.hpp/.cpp/.cc/.cxx/.hxx）、数据库脚本（.sql）
    3. 如果没有代码文件变更，直接报告「无代码变更，跳过审查」后结束
    4. 读取规则文件，从技能目录（通常为 .claude/skills/）加载：
@@ -36,7 +36,9 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
    7. 仅对 blocker 违规给出明确结论（是否阻塞提交），warning 仅列建议
    ```
 5. **用户确认**：展示提交信息 + 审查报告，请用户确认后执行
-6. **执行提交**：`git add` + `git commit` 提交所有变更
+6. **执行提交**：`git add` + `git commit` 提交用户确认范围内的变更
+
+> **安全边界**：本技能只执行**本地** `git commit`，**绝不执行 `git push`**。任何推送/同步到远程的操作均需用户显式另行指示。
 
 ## 提交信息规范
 
@@ -47,6 +49,14 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
 ```
 
 **优先使用单行提交信息。** 详细说明和 footer 仅在你明确要求时提供。
+
+**破坏性变更（breaking change）**：当变更破坏既有 API/行为时，在 type/scope 后加 `!`，并在 footer 用 `BREAKING CHANGE:` 描述：
+```
+<type>(<scope>)!: <描述>
+
+BREAKING CHANGE: <破坏性说明>
+```
+（footer 与标题之间空一行；仅在确属破坏性变更时使用，普通变更不加。）
 
 ### Type 类型
 
@@ -68,13 +78,14 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
 - **COMMIT-001**：标题行不超过 72 字符，使用中文描述，末尾不加句号
 - **COMMIT-002**：默认仅生成单行标题，不加正文和 footer——除非用户明确要求详细说明
 - **COMMIT-003**：若确需正文，正文每行不超过 72 字符，与标题之间空一行
-- **COMMIT-004**：若变更为新功能且有相关的 issue/ticket 编号，且用户要求引用时，在 footer 引用
-- **COMMIT-005**：一次提交应围绕单一逻辑意图，避免把不相关的变更混入同一提交
+- **COMMIT-004**：若变更为新功能且有相关的 issue/ticket 编号，且用户要求引用时，在 footer 引用（如 `Closes #123` / `Refs #456`，footer 与正文之间空一行）
+- **COMMIT-005**：一次提交应围绕单一逻辑意图，避免把不相关的变更混入同一提交。检测到变更文件/内容服务于多个不相关逻辑意图时，应主动建议拆分为多个 commit 并分别生成提交信息
 - **COMMIT-006**：禁止生成含 `fix bug`、`update code`、`修改了一下` 等无信息量的模糊描述
 - **COMMIT-007**：type 选择要准确——若变更属于多个 type，选择最主要的那一个
 - **COMMIT-008**：scope 可选但推荐填写，标注影响的模块/目录/文件
 - **COMMIT-009**：描述应直击核心变更，不堆砌细节；能 10 个字说清就不用 30 个字
 - **COMMIT-010**：禁止在提交信息中附加 `Co-Authored-By` 等末尾注脚。仅以 conventional commit 行作为提交信息，不添加任何作者行。
+- **COMMIT-011**：破坏性变更必须显式标注——type/scope 后加 `!`，并在 footer 用 `BREAKING CHANGE:` 描述破坏内容（与标题空一行分隔）
 
 ### 示例
 
@@ -92,6 +103,12 @@ refactor(utils): 将日期工具函数迁移至 DateTime 命名空间
 
 ```
 chore(deps): 升级 jsoncpp 至 1.9.5
+```
+
+```
+feat(api)!: 将认证接口返回值改为对象结构
+
+BREAKING CHANGE: 原字符串返回值改为 AuthResult 对象，调用方需同步更新
 ```
 
 ## 分析要点
@@ -118,7 +135,7 @@ chore(deps): 升级 jsoncpp 至 1.9.5
 用户确认后执行：
 
 ```bash
-git add <变更文件>
+git add <步骤 1/2 列出的变更文件>
 git commit -m "<提交信息>"
 ```
 
@@ -133,6 +150,13 @@ git commit -m "<提交信息>"
 ### 部分提交
 
 若用户只想提交部分文件，在步骤 1 之后询问需要提交的文件范围，然后仅分析指定文件。
+
+### 回滚/撤销
+
+若用户要求撤销或回滚：
+- **撤销上一次提交但保留变更**：`git reset --soft HEAD~1`（变更保留在暂存区）
+- **回滚已提交的变更**：`git revert <commit>`（生成反向提交，保留历史）
+- 均需先展示将受影响的范围并请用户确认，不自动执行。
 
 ### 合并冲突/未完成操作
 
@@ -149,12 +173,17 @@ git commit -m "<提交信息>"
 
 若检测到变更包含大文件（>1MB）或二进制文件，在摘要中特别标注，提醒用户确认是否应提交。
 
+### 敏感文件
+
+若变更包含敏感文件（`.env*`、`*.pem`、`*.key`、证书、密钥、私钥、`secrets.*`、`.gitignore` 中已忽略项等），在摘要中**红色标注**并阻止直接提交，提示用户确认该文件不应进入版本控制，建议移除或加入 `.gitignore`。
+
 ### Amend 提交
 
 若用户要求 amend（修正上一次提交），使用 `git commit --amend`。此时：
 - 先展示上一次提交信息
 - 展示本次新的变更
 - 生成修正后的提交信息供用户确认
+- 提示：**不得 amend 已 push 的提交**；仅需更新提交信息时用 `--no-edit`
 
 ## 审查输出格式
 

@@ -1,6 +1,6 @@
 ---
 name: db-rules
-description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、DML、存储过程、触发器、函数等）时使用。提供跨数据库通用最佳实践规范，并根据脚本目标数据库自动应用 references/ 中的特定数据库规则。当用户创建、修改或要求审查数据库脚本时激活。
+description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、DML、存储过程、触发器、函数、schema、migration、table、index 等）时使用。提供跨数据库通用最佳实践规范，并在 references/ 存在对应数据库专属规则时一并应用。当用户创建、修改或要求审查数据库脚本、排查死锁/慢查询时激活。
 ---
 
 # 数据库脚本规范强制执行
@@ -11,23 +11,34 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 
 处理数据库脚本时，遵循以下流程：
 
-1. **识别目标数据库**：根据用户说明或脚本语法特征判断目标数据库类型（DB2、MySQL、PostgreSQL、Oracle、SQL Server 等）。若 `references/` 目录下存在对应数据库的参考文件，须一并加载并应用其规则。
-2. **写脚本之前**：阅读本文件中的通用规则；若有数据库专属参考文件，一并阅读。
-3. **写脚本过程中**：边写边应用每条适用规则，不要推迟到后续阶段再补。
-4. **写脚本之后**：重新通读修改过的脚本，对照通用规则及专属规则逐条审查。发现违规立即修复。
-5. **报告审查结果**：审查完成后，输出一份简要清单，标明哪些规则类别通过、哪些（如有）存在问题。
+1. **识别目标数据库**：根据用户说明或脚本语法特征判断目标数据库类型（DB2、MySQL、PostgreSQL、Oracle、SQL Server、SQLite 等）。参考下列引擎特征判定表，结合脚本中的专有语法定位数据库：
+
+   | 特征 | 数据库 |
+   | ---- | ------ |
+   | `LIMIT`、`AUTO_INCREMENT`、`ON DUPLICATE KEY`、`` ` `` 反引号引用 | MySQL |
+   | `FETCH FIRST`、`IDENTITY`、`CALL` 语句级触发器、`@` 分隔符 | DB2 |
+   | `SERIAL`、`::` 类型转换、`RETURNING`、`ON CONFLICT` | PostgreSQL |
+   | `NVL`、`ROWNUM`、`VARCHAR2`、`SYSDATE` | Oracle |
+   | `TOP`、`[ ]` 方括号引用、`sp_` 前缀 | SQL Server |
+   | `INTEGER PRIMARY KEY AUTOINCREMENT`、`STRICT` 建表关键字 | SQLite |
+
+2. **加载专属规则**：判定数据库后，用 `Glob` 查找 `references/` 目录下以数据库名为前缀的参考文件（如 `DB2_*`）。若存在，一并加载并应用；**当前仅 DB2 有专属参考文件，其余数据库仅应用本文件的通用规则**。
+3. **写脚本之前**：阅读本文件中的通用规则；若有数据库专属参考文件，一并阅读。
+4. **写脚本过程中**：边写边应用每条适用规则，不要推迟到后续阶段再补。
+5. **写脚本之后**：重新通读修改过的脚本，对照通用规则及专属规则逐条审查。发现违规立即修复。
+6. **报告审查结果**：审查完成后，输出一份简要清单，标明哪些规则类别通过、哪些（如有）存在问题。
 
 ## 数据库专属规则
 
-当识别出目标数据库后，查找 `references/` 目录下是否有对应的参考文件。文件命名规则为 `<数据库名>_<主题>.md`（如 `DB2_trigger&procedure.md`）。
+当识别出目标数据库后，用 `Glob` 查找 `references/` 目录下是否有对应的参考文件。文件命名规则为 `<数据库名>_<主题>.md`（如 `DB2_trigger_procedure.md`）。
 
 当前已有参考文件：
 
 | 数据库 | 参考文件 | 覆盖范围 |
 | ------ | -------- | -------- |
-| DB2 LUW | `references/DB2_trigger&procedure.md` | 触发器、存储过程、临时表 |
+| DB2 | `references/DB2_trigger_procedure.md` | 触发器、存储过程、临时表（Oracle→DB2 移植场景，含 DB2 通用约束） |
 
-若未找到对应参考文件，仅应用本文件的通用规则。
+若未找到对应参考文件，仅应用本文件的通用规则。其余数据库（MySQL/PostgreSQL/Oracle/SQL Server/SQLite）暂无专属文件。
 
 ## 严重级别
 
@@ -53,7 +64,7 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 ### 2. 注释与文档（blocker）
 
 - **DOC-001**：每个脚本文件头部必须包含注释块，说明：用途、作者、创建日期、修改记录。
-- **DOC-002**：每张表须有列级注释（`COMMENT ON TABLE / COLUMN`），说明业务含义。
+- **DOC-002**：每张表须有列级注释说明业务含义。语法按库选择：Oracle/PostgreSQL/DB2 用 `COMMENT ON TABLE / COLUMN`；MySQL 用列定义内联 `COMMENT '...'` 或表级 `ALTER TABLE ... COMMENT=`；SQL Server 用 `sp_addextendedproperty`。
 - **DOC-003**：每个存储过程/函数的参数、返回值、副作用须用注释说明。
 - **DOC-004**：非显而易见的业务逻辑、魔法数字、临时方案必须附带行内注释。
 
@@ -79,12 +90,12 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 
 ### 6. 数据类型与约束（blocker）
 
-- **TYPE-001**：禁止使用已废弃的数据类型（如 `TEXT`/`IMAGE` → SQL Server、`LONG` → Oracle），必须使用其推荐的替代类型。
+- **TYPE-001**：禁止使用已废弃的数据类型。废弃类型仅针对其标注的数据库：SQL Server 的 `TEXT`/`NTEXT`/`IMAGE`（改用 `VARCHAR(MAX)`/`NVARCHAR(MAX)`/`VARBINARY(MAX)`）、Oracle 的 `LONG`（改用 LOB）。注意：`TEXT` 在 PostgreSQL/MySQL 是合法且推荐类型，不适用本条的废弃判定。
 - **TYPE-002**：主键列必须显式声明 `NOT NULL`。
 - **TYPE-003**：所有表必须声明主键。除非是临时表、日志流水表等特殊场景并附注释说明原因。
 - **TYPE-004**：金额字段使用 `DECIMAL`/`NUMERIC`，禁止使用 `FLOAT`/`DOUBLE`（避免精度丢失）。
 - **TYPE-005**：字符串字段选择 `VARCHAR`（可变长），禁止滥用 `CHAR`（定长）。仅在已知固定长度的场景使用 `CHAR`。
-- **TYPE-006**：时间戳字段优先使用带时区的类型（`TIMESTAMP WITH TIME ZONE` 或等价类型），确保跨时区数据一致性。
+- **TYPE-006**：时间戳字段优先使用带时区的类型（`TIMESTAMP WITH TIME ZONE` 等），确保跨时区数据一致性。MySQL 等无时区感知类型的数据库，应显式约定统一按 UTC 存储并在应用层处理时区。
 
 ### 7. 查询与 DML 基础规范（blocker）
 
@@ -98,7 +109,7 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 - **IDX-001**：外键列必须有对应索引，避免全表扫。
 - **IDX-002**：索引列数不宜过多，复合索引列数一般不超过 5 列。
 - **IDX-003**：`WHERE` 条件中禁止对索引列使用函数或表达式，这会导致索引失效（如 `WHERE UPPER(name) = 'A'`、`WHERE date_col + 1 > NOW()`）。
-- **IDX-004**：大批量 DML（百万级+）执行后应检查索引状态，必要时重建索引。
+- **IDX-004**：大批量 DML（百万级+）执行后应检查索引碎片状态（Oracle 等需要 `REBUILD` 的库）；MySQL/PostgreSQL/SQL Server 索引随 DML 自动维护，无需事后重建，仅在实际观测到碎片/性能劣化时处理。
 
 ### 9. 脚本组织（warning）
 
@@ -111,7 +122,7 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 
 - **ERR-001**：存储过程中必须声明异常处理器，捕获 `SQLEXCEPTION` 并记录错误信息后重新抛出或返回错误码。禁止静默吞掉异常。
 - **ERR-002**：错误日志必须包含：错误码、错误消息、发生位置（过程名/脚本名）、时间戳。
-- **ERR-003**：数据库连接/会话级脚本应设置严格模式（如 `SET STRICT`、`sql_mode` 包含 `STRICT_TRANS_TABLES`），禁止静默截断数据。
+- **ERR-003**：数据库连接/会话级脚本应启用严格模式以禁止静默截断数据——按库选择：MySQL 设置 `sql_mode` 包含 `STRICT_TRANS_TABLES`；PostgreSQL/SQL Server/Oracle 默认即严格，无需额外设置；SQLite 在建表时用 `STRICT` 关键字。
 
 ### 11. 迁移与版本兼容（warning）
 
@@ -144,15 +155,16 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
 ### Warning 检查
 - [x] IDX：索引 —— 通过
 - [ ] ORG：脚本组织 —— ORG-001：脚本混合了 DDL 创建和 DML 测试数据
+- [x] MIG：迁移与版本兼容 —— 通过
 
-### 数据库专属检查（DB2 LUW）
+### 数据库专属检查（DB2）
 - [x] TRIG：触发器拆分 —— 通过
-- [ ] ROW：行级触发器 —— ROW-002：多语句行级触发器缺少 BEGIN ATOMIC
+- [ ] PROC：存储过程 —— PROC-003：使用了参数游标，应改用变量游标
 
 ### 总结
 - Blocker：1 项违规（IDEM-001）—— 提交前必须修复
 - Warning：1 项建议（ORG-001）
-- 专属规则 Blocker：1 项违规（ROW-002）—— 提交前必须修复
+- 专属规则 Blocker：1 项违规（PROC-003）—— 提交前必须修复
 ```
 
 Blocker 必须在报告完成前全部修复。Warning 尽量修复，或说明推迟处理的原因。
