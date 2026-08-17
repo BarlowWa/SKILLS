@@ -180,44 +180,44 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 ## Warning 检查清单
 
-### LOG：日志体系
+### LOG-W：日志体系（warning）
 
-- **LOG-001**：`LogLevel` 枚举（`Trace` / `Debug` / `Info` / `Warn` / `Error` / `Fatal` 六级）和 `LoggerCallback` 统一定义在单一中心位置，禁止自定义等级
-- **LOG-002**：日志回调参数用 `std::string_view` 而非 `std::string`，减少拷贝
-- **LOG-003**：基类应接受或可注入统一日志回调；内置空回调兜底防空指针崩溃；外部实现需自行保证线程安全
+- **LOG-W001**：`LogLevel` 枚举（`Trace` / `Debug` / `Info` / `Warn` / `Error` / `Fatal` 六级）和 `LoggerCallback` 统一定义在单一中心位置，禁止自定义等级
+- **LOG-W002**：日志回调参数用 `std::string_view` 而非 `std::string`，减少拷贝
+- **LOG-W003**：基类应接受或可注入统一日志回调；内置空回调兜底防空指针崩溃；外部实现需自行保证线程安全
 
 ### THREAD-W：多线程进阶（warning）
 
-- **THREAD-007**：C++20 项目优先 `std::jthread` 替代 `std::thread`——`jthread` 析构时自动 join（防止 `std::terminate`），并支持 `stop_token` 协作式中断
-- **THREAD-008**：`std::atomic` 非 `std::memory_order_seq_cst` 的内存序必须注释说明选择理由；默认 `seq_cst` 对绝大多数场景足够且正确
-- **THREAD-009**：自建线程池/任务队列必须有明确的 shutdown 生命周期：析构函数等待所有已提交任务完成、拒绝新任务、正确 join 所有工作线程
+- **THREAD-W007**：C++20 项目优先 `std::jthread` 替代 `std::thread`——`jthread` 析构时自动 join（防止 `std::terminate`），并支持 `stop_token` 协作式中断
+- **THREAD-W008**：`std::atomic` 非 `std::memory_order_seq_cst` 的内存序必须注释说明选择理由；默认 `seq_cst` 对绝大多数场景足够且正确
+- **THREAD-W009**：自建线程池/任务队列必须有明确的 shutdown 生命周期：析构函数等待所有已提交任务完成、拒绝新任务、正确 join 所有工作线程
 
 ### MODERN-W：现代 C++ 惯用法（warning）
 
-- **MODERN-002**：优先 `std::optional` / `std::variant` / `std::expected`（C++23）替代哨兵值（`-1`/`nullptr`/空状态）和输出参数——类型系统直接编码"有/无"语义，消除遗漏检查的风险
-- **MODERN-003**：C++20 项目优先使用 `std::span<T>` 替代 `T* + size_t` 参数对——`span` 自带边界信息，消除缓冲区越界这类 bug 的根源
+- **MODERN-W002**：优先 `std::optional` / `std::variant` / `std::expected`（C++23）替代哨兵值（`-1`/`nullptr`/空状态）和输出参数——类型系统直接编码"有/无"语义，消除遗漏检查的风险
+- **MODERN-W003**：C++20 项目优先使用 `std::span<T>` 替代 `T* + size_t` 参数对——`span` 自带边界信息，消除缓冲区越界这类 bug 的根源
   > `std::span` 同样是非拥有型观察视图，不管理底层数据生命周期。
-- **MODERN-004**：优先使用 Ranges（`std::ranges::sort(v)`、`v | filter | transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
-- **MODERN-005**：编译期条件分支：C++17 优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch；C++20 优先使用 concepts 替代 SFINAE——代码更直观，错误消息更友好
-- **MODERN-006**：禁止用指针算术推进迭代（`p += n` 循环、`ptr - q`）；取单元素地址 `&arr[i]` 合法。优先 `std::span` / 迭代器 / 范围 `for`（见 SEC-A002、CONST-003、MODERN-003）
-- **MODERN-007**：智能指针 `.get()` 仅限 C 互操作或短暂借用，不得流入业务接口；禁止 `.release()`
+- **MODERN-W004**：优先使用 Ranges（`std::ranges::sort(v)`、`v | filter | transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
+- **MODERN-W005**：编译期条件分支：C++17 优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch；C++20 优先使用 concepts 替代 SFINAE——代码更直观，错误消息更友好
+- **MODERN-W006**：禁止用指针算术推进迭代（`p += n` 循环、`ptr - q`）；取单元素地址 `&arr[i]` 合法。优先 `std::span` / 迭代器 / 范围 `for`（见 SEC-A002、CONST-003、MODERN-W003）
+- **MODERN-W007**：智能指针 `.get()` 仅限 C 互操作或短暂借用，不得流入业务接口；禁止 `.release()`
   > `.release()` 把所有权直接转成裸指针，与 MEM-001/002 冲突；`.get()` 泄漏非拥有型裸指针，破坏生命周期契约。
 
-### CPLX：代码复杂度与可维护性（warning）
+### CPLX-W：代码复杂度与可维护性（warning）
 
 > 本类别不替代 SonarQube / clang-tidy 等工具的定量指标检测，专注于工具难以完成的语义判断。
 
-- **CPLX-001**：逻辑重复检测——识别不同位置（可能不同变量名/类型）但语义等价或高度相似的代码块，建议提取公共函数。工具只能检测文本重复，LLM 可发现结构性重复
-- **CPLX-002**：参数簇识别——若一组参数（如 `x1, y1, x2, y2` 坐标、`host, port, timeout` 连接配置）在多个函数签名中成组出现，应封装为结构体，减少接口复杂度并降低传参顺序错误风险
-- **CPLX-003**：函数职责单一性——识别"做了多件不相关事情"的函数（如一个函数内同时包含数据解析、业务计算和文件 I/O），建议拆分以提升可测试性
-- **CPLX-004**：嵌套深度 >4 层时建议早返回（early return）或提取子函数重构——不机械报警（状态机等场景合理性由审查者判断），而是针对可简化场景提出具体重构建议
+- **CPLX-W001**：逻辑重复检测——识别不同位置（可能不同变量名/类型）但语义等价或高度相似的代码块，建议提取公共函数。工具只能检测文本重复，LLM 可发现结构性重复
+- **CPLX-W002**：参数簇识别——若一组参数（如 `x1, y1, x2, y2` 坐标、`host, port, timeout` 连接配置）在多个函数签名中成组出现，应封装为结构体，减少接口复杂度并降低传参顺序错误风险
+- **CPLX-W003**：函数职责单一性——识别"做了多件不相关事情"的函数（如一个函数内同时包含数据解析、业务计算和文件 I/O），建议拆分以提升可测试性
+- **CPLX-W004**：嵌套深度 >4 层时建议早返回（early return）或提取子函数重构——不机械报警（状态机等场景合理性由审查者判断），而是针对可简化场景提出具体重构建议
 
-### PERF：性能
+### PERF-W：性能（warning）
 
-- **PERF-001**：只读成员函数必须标记 `const`
-- **PERF-002**：优先 `emplace` / `emplace_back` 而非 `push_back`
-- **PERF-003**：不继承的类、不重写的虚函数标记 `final`
-- **PERF-004**：`#include` 分 5 组排序（对应头文件 → C 标准库 → C++ 标准库 → 第三方库 → 项目内部），组间空行
+- **PERF-W001**：只读成员函数必须标记 `const`
+- **PERF-W002**：优先 `emplace` / `emplace_back` 而非 `push_back`
+- **PERF-W003**：不继承的类、不重写的虚函数标记 `final`
+- **PERF-W004**：`#include` 分 5 组排序（对应头文件 → C 标准库 → C++ 标准库 → 第三方库 → 项目内部），组间空行
 
 ---
 
@@ -250,17 +250,17 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - ...
 
 ### Warning 检查
-- [x] LOG：日志 —— 通过
+- [x] LOG-W：日志 —— 通过
 - [x] THREAD-W：多线程进阶 —— 通过
 - [x] MODERN-W：现代 C++ 进阶 —— 通过
-- [x] CPLX：代码复杂度 —— 通过
-- [x] PERF：性能 —— 通过
+- [x] CPLX-W：代码复杂度 —— 通过
+- [x] PERF-W：性能 —— 通过
 - [ ] <类别>：<问题> —— ...
 - ...
 
 ### 总结
 - Blocker：1 项违规（OOP-001）—— 必须修复
-- Warning：1 项建议（PERF-001）
+- Warning：1 项建议（PERF-W001）
 ```
 
 ## 豁免

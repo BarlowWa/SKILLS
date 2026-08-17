@@ -64,12 +64,12 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 
 ## Warning 检查清单
 
-### COV：路径覆盖
+### COV-W：路径覆盖
 
 - **COV-001**：每个被测公开接口（函数/方法）的测试集应覆盖正常路径和至少一个边界条件或异常/错误路径。禁止仅有 happy-path 的完整接口测试集
   > 仅有正常路径的测试给人以"已测试"的错觉，实际上异常分支完全未验证，是测试覆盖率中最常见的盲区。
-- **COV-003**：若存在 `cpp-test-author` 产出的用例设计清单（用例矩阵 + 未覆盖项），对照逐项核对实际测试是否落地；缺失的 BVA/ECP/BRP 覆盖需在报告中显式列出。本条衔接 `cpp-test-author`（写时设计 → 写后审查）
-  > COV-002（覆盖率阈值）见下方「COV-W：覆盖率建议」小节。
+- **COV-002**：若存在 `cpp-test-author` 产出的用例设计清单（用例矩阵 + 未覆盖项），对照逐项核对实际测试是否落地；缺失的 BVA/ECP/BRP 覆盖需在报告中显式列出。本条衔接 `cpp-test-author`（写时设计 → 写后审查）
+  > THR-W001（覆盖率阈值）见下方「THR-W：覆盖率阈值」小节。
 
 ### MOCK-W：Mock 深入建议
 
@@ -78,16 +78,16 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 - **MOCK-005**：区分 Stub / Fake / Mock 三概念——Stub（固定返回值，无交互验证）、Fake（可用轻量实现）、Mock（期望验证）。优先用 Stub/Fake 表达"桩"语义，避免为简单固定返回值引入完整 Mock 框架
 - **MOCK-003**：单个测试用例中 mock 对象数量宜控制在 3 个以内。超出时通常是被测类职责过重的信号，建议重构而非继续堆砌 mock（本条为启发式建议，不阻塞提交）
 
-### DEATH：Death Test 规范
+### DEATH-W：Death Test 规范
 
 - **DEATH-001**：Death test（`EXPECT_DEATH` / `ASSERT_DEATH` / `EXPECT_DEATH_IF_SUPPORTED` / `EXPECT_EXIT`）仅用于验证程序的断言/abort/致命崩溃行为及退出码。**禁止**用于验证普通异常抛出——异常用 `EXPECT_THROW` 验证
   > Death test 在独立子进程运行：POSIX（Linux/macOS）下 gtest 默认用 fork 子进程（开销较低）；Windows 无 fork，gtest 回退到 threadsafe 风格（spawn 新进程并重跑整个测试到死亡点，开销可达数百 ms~秒级）。且 death test 运行在独立进程，不继承测试夹具的内存态、其副作用不会回流主进程。滥用会显著拖慢测试套件，Windows 上尤甚。
 
-### COV-W：覆盖率建议
+### THR-W：覆盖率阈值
 
-- **COV-002**：建议语句/分支覆盖率阈值 ≥ 80%，核心模块建议 ≥ 90%。本条为可配置的目标声明（需运行时工具测量），仅作为审查时的参考建议
+- **THR-W001**：建议语句/分支覆盖率阈值 ≥ 80%，核心模块建议 ≥ 90%。本条为可配置的目标声明（需运行时工具测量），仅作为审查时的参考建议
 
-### TPERF：测试执行效率
+### TPERF-W：测试执行效率
 
 - **TPERF-001**：单个测试用例平均执行时间应控制在 100ms 以内。超过 500ms 的测试应标记为慢速测试并确认必要性
   > 本条依赖运行时测量数据，静态审查时作为参考建议。
@@ -111,11 +111,11 @@ description: 审查 C++ 测试代码质量。覆盖测试文件组织、Mock/Fak
 - ...
 
 ### Warning 检查
-- [x] COV：路径覆盖 —— 通过
+- [x] COV-W：路径覆盖 —— 通过
 - [x] MOCK-W：Mock 深入建议 —— 通过
-- [x] DEATH：Death Test —— 通过
-- [x] COV-W：覆盖率建议 —— 通过
-- [x] TPERF：测试执行效率 —— 通过
+- [x] DEATH-W：Death Test —— 通过
+- [x] THR-W：覆盖率阈值 —— 通过
+- [x] TPERF-W：测试执行效率 —— 通过
 - [ ] <类别>：<问题> —— ...
 
 ### 设计覆盖核对（若有 cpp-test-author 清单）

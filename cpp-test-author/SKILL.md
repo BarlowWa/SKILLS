@@ -62,7 +62,7 @@ description: 编写/设计 C++ 测试时使用。主动设计测试用例的边�
 - **BRP-003**：异常路径——覆盖触发异常的输入组合、异常抛出后的资源释放（RAII 析构顺序）、异常安全保证等级（basic/strong/nothrow）断言；`cpp-rules` ERR-002 声明为 `noexcept` 的函数路径用 `EXPECT_NO_THROW` 显式验证
   > 三个保证等级是 basic / strong / **nothrow**（`noexcept` 是 C++ 关键字/说明符，不是保证等级名）。strong 保证断言的是异常抛出后对象状态回滚到可观测的等价状态，需多条断言或拷贝比对，而非单条断言能直接验证。
 - **BRP-004**：空值路径——`nullptr`、`std::nullopt`、空 `span`、空 `string_view`、空容器作为输入必须独立用例。空输入与非空内容是两条不同路径
-- **BRP-005**：early-return / guard clause（`if (!valid) return;`）每个提前返回分支都要有对应用例；守卫子句难以覆盖时通常是 `cpp-rules` CPLX-004 所述的重构信号
+- **BRP-005**：early-return / guard clause（`if (!valid) return;`）每个提前返回分支都要有对应用例；守卫子句难以覆盖时通常是 `cpp-rules` CPLX-W004 所述的重构信号
 
 ### FLT：故障注入
 
@@ -71,7 +71,7 @@ description: 编写/设计 C++ 测试时使用。主动设计测试用例的边�
 
 ### CONC：并发与线程安全
 
-- **CONC-001**：并发/线程安全用例设计——被测单元涉及共享状态时，必须设计竞态、死锁、多线程交错（interleaving）、`std::atomic` 内存序、共享状态同步的用例。以 `cpp-rules` THREAD-003/004/005（锁/条件变量/原子）与 THREAD-008（内存序）为设计导向，验证锁、条件变量、原子操作的正确性
+- **CONC-001**：并发/线程安全用例设计——被测单元涉及共享状态时，必须设计竞态、死锁、多线程交错（interleaving）、`std::atomic` 内存序、共享状态同步的用例。以 `cpp-rules` THREAD-003/004/005（锁/条件变量/原子）与 THREAD-W008（内存序）为设计导向，验证锁、条件变量、原子操作的正确性
 
 ### RLC：资源生命周期
 
@@ -113,7 +113,7 @@ description: 编写/设计 C++ 测试时使用。主动设计测试用例的边�
 
 ## 与其他技能协同
 
-- `cpp-rules`：生产代码规范。测试代码不适用其规则；本技能引用的 SEC-A002（越界）、SEC-B001（符号混合）、CPLX-004（重构信号）、ERR-002（noexcept）仅作为设计导向
+- `cpp-rules`：生产代码规范。测试代码不适用其规则；本技能引用的 SEC-A002（越界）、SEC-B001（符号混合）、CPLX-W004（重构信号）、ERR-002（noexcept）仅作为设计导向
 - `cpp-test-review`：本技能产出的「用例矩阵 + 未覆盖项」是其审查时的核对输入，重点核对 BVA/BRP 是否真实落地
 - 设计中发现被测单元边界过多（有效等价类 >15 个）通常是接口职责过重，优先建议重构而非堆砌用例
 
