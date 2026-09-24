@@ -1,6 +1,6 @@
 ---
 name: db-rules
-description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、DML、存储过程、触发器、函数、schema、migration、table、index 等）时使用。提供跨数据库通用最佳实践规范，并在 references/ 存在对应数据库专属规则时一并应用。当用户创建、修改或要求审查数据库脚本、排查死锁/慢查询时激活。
+description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、DML、存储过程、触发器、函数、schema、migration、table、index 等）时使用。提供跨数据库通用最佳实践规范，并在 references/ 存在对应数据库专属规则时一并应用。当用户创建、修改或要求审查数据库脚本时激活。
 ---
 
 # 数据库脚本规范强制执行
