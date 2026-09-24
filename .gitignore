@@ -1,0 +1,25 @@
+# 本仓库根是 ~/.claude/skills。注意 ~/.claude/ 下**含明文 API key** 的文件
+# （settings_cop.json / settings_cop2.json / settings_myself.json）就在上一层，
+# 且本仓库有**公开远端**（github.com/BarlowWa/SKILLS.git）。
+#
+# ⚠️ git **不允许** .gitignore 匹配仓库根之外的内容 —— `../settings*.json` 这类
+#    写法会被静默忽略（实测 `git check-ignore` 不命中）。因此下面**无法**预先
+#    挡住 `~/.claude/` 下的凭据。真正的护栏只有一条：
+#    **不要把仓库根从 ~/.claude/skills 上移到 ~/.claude。**
+#    凭据一旦进历史就只能吊销重发。
+
+# 万一有人把 settings 之类的文件拷进本目录（此处的模式**确实生效**）
+settings*.json
+*.env
+.credentials.json
+history.jsonl
+
+# 临时/残留目录（rotating_tmp_13 就是这么攒出来的，当前为空目录）
+rotating_tmp_*/
+*.tmp
+*.bak
+*~
+.DS_Store
+Thumbs.db
+__pycache__/
+node_modules/
