@@ -23,14 +23,14 @@ python ~/.claude/skills/fetch-page/scripts/fetch.py <url> [选项]
 | API 接口（JSON） | `python fetch.py --raw <url>` — 输出原始响应，不套正文提取 |
 | 带 token 的 API | `python fetch.py --raw --header "Authorization: Bearer TOKEN" <url>` |
 | POST 到 API | `python fetch.py --raw --method POST --header "Content-Type: application/json" --data '{"q":"x"}' <url>` |
-| 登录后页面 | 先 `--cookie-jar <file> --data "user=..&pass=.." <login_url>` 存 session，再带同一 `--cookie-jar` 抓内页 |
+| 登录后页面 | 先 `--method POST --cookie-jar <file> --data "user=..&pass=.." <login_url>` 存 session，再带同一 `--cookie-jar` 抓内页（**`--method` 默认 GET，登录必须显式写 POST**，否则凭据以 GET 请求体发出、登录静默失败） |
 | 局域网/自签证书 | 加 `--insecure` 跳过证书校验（HTTP 则不需要） |
 | Confluence / Seraph 登录 | 登录 POST 必须带 `--referer "<登录页URL>"`，否则返回 401（`X-Seraph-LoginReason` 头校验来源页） |
 
 ## 常用选项
 
 - `--raw` — 输出原始响应体（API/JSON/二进制），不提取正文
-- `--selector "css"` — 限定 HTML 正文范围
+- `--selector "css"` — 限定 HTML 正文范围。**需另装 `cssselect`**（`pip install cssselect`）——当前环境未装，未装时该选项会走回退分支、等同于不限定，见「注意事项」
 - `--max-chars N` — 输出字符数上限（默认 60000，`0` 不限）；超出会截断并在 stderr 提示
 - `--method GET|POST|PUT|DELETE` — HTTP 方法
 - `--data "..."` — 请求体
@@ -47,10 +47,10 @@ stderr 会给出提示，按提示对照：
 | 现象 | 原因 | 对策 |
 | ---- | ---- | ---- |
 | `正文几乎为空` | 页面靠 JS 渲染（SPA） | 用 `--raw` 看原始响应；内容确在 JS 里则此法抓不到，需改用浏览器/接口 |
-| `正文几乎为空` | 需要登录态 | 先 `--cookie-jar` 登录，再带同一 jar 抓内页 |
+| `正文几乎为空` | 需要登录态 | 先 `--method POST --cookie-jar <file> --data "..." <login_url>` 登录，再带同一 jar 抓内页 |
 | `正文几乎为空` | 反爬拦截，返回验证页 | 检查 HTTP 状态码与 `--raw` 返回内容 |
 | 乱码 | 编码判定错误 | 用 `--raw` 取原始字节自行判断；或检查页面 `charset` |
-| 内容被截断 | 超出 `--max-chars` | 调大 `--max-chars`，或用 `--selector` 缩小范围 |
+| 内容被截断 | 超出 `--max-chars` | 调大 `--max-chars`；或用 `--selector` 缩小范围（**前提是已装 `cssselect`**，否则无效） |
 
 ## 注意事项
 
@@ -58,5 +58,5 @@ stderr 会给出提示，按提示对照：
 - **正文提取会做行内合并**（`<p>已处理 <b>3</b> 条</p>` → `已处理 3 条`），块级元素之间分段，标题转 `##`，链接转 `[文本](url)`，并反转义 HTML 实体
 - 输出默认截断到 60000 字符，避免长页面挤爆上下文；需要全文时显式调大 `--max-chars`
 - 登录态用 MozillaCookieJar，`--cookie-jar` 指向同一文件即可跨命令复用
-- 脚本依赖仅标准库 + lxml（已装），无 requests/bs4
+- 脚本依赖：标准库 + `lxml`（已装）；`--selector` 另需 `cssselect`（**当前未装，`--selector` 会失效**）。无 requests/bs4
 - 抓到的正文可能较长，应只向用户展示关键结论，不要整篇倾倒

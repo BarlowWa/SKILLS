@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """fetch.py — 抓取网页/接口并输出内容。
 
-覆盖三类目标:
+覆盖四类目标:
     1. 公开网页    -> 提取干净正文（标题 + 段落）
     2. 登录页      -> --cookie-jar 持久化 session，--data/--method 支持登录 POST
     3. 局域网服务器 -> --insecure 跳过自签证书校验；HTTP 直接可用

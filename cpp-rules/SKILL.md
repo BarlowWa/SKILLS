@@ -5,7 +5,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 
 # C++ 编码规范强制执行
 
-对每个 C++ 文件变更，必须对照下方 checklist 逐条检查。此 skill 是**强制性关卡**——所有 blocker 必须在报告完成前修复。
+对每个 C++ 文件变更，必须对照下方 checklist 逐条检查。此 skill 是**强制性关卡**——所有 blocker 必须在报告完成前修复（写新代码 / 重构模式），或在报告中明确指出并给出修复方案（**仅审查已有代码**模式，见『工作流程』）。
 
 ## 工作流程
 
@@ -198,7 +198,7 @@ description: 在编写、编辑、审查或重构 C++ 代码（.h、.hpp、.cpp�
 - **MODERN-W003**：C++20 项目优先使用 `std::span<T>` 替代 `T* + size_t` 参数对——`span` 自带边界信息，消除缓冲区越界这类 bug 的根源
   > `std::span` 同样是非拥有型观察视图，不管理底层数据生命周期。
 - **MODERN-W004**：优先使用 Ranges（`std::ranges::sort(v)`、`v | filter | transform`）替代原始迭代器对——意图表达更清晰，减少迭代器失效风险
-- **MODERN-W005**：编译期条件分支：C++17 优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch；C++20 优先使用 concepts 替代 SFINAE——代码更直观，错误消息更友好
+- **MODERN-W005**：编译期条件分支：C++17 优先使用 `if constexpr` 替代 SFINAE / `std::enable_if` / tag dispatch；C++20 优先使用 concepts 替代 SFINAE——代码更直观，错误消息更友好（**C++20 的模板约束禁用属 TPL-002（blocker），本条不重复定级**）
 - **MODERN-W006**：禁止用指针算术推进迭代（`p += n` 循环、`ptr - q`）；取单元素地址 `&arr[i]` 合法。优先 `std::span` / 迭代器 / 范围 `for`（见 SEC-A002、CONST-003、MODERN-W003）
 - **MODERN-W007**：智能指针 `.get()` 仅限 C 互操作或短暂借用，不得流入业务接口；禁止 `.release()`
   > `.release()` 把所有权直接转成裸指针，与 MEM-001/002 冲突；`.get()` 泄漏非拥有型裸指针，破坏生命周期契约。

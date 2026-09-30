@@ -17,7 +17,9 @@
 映射表会随他 skill 改版而静默过期。怀疑不一致时，在 skills 根目录执行：
 
 ```bash
-grep -nE 'critical|blocker|warning|major|minor' cpp-arch-review/SKILL.md | head -8
+grep -nE 'critical|blocker|warning|major|minor' \
+  cpp-arch-review/SKILL.md cpp-rules/SKILL.md cpp-test-review/SKILL.md \
+  cpp-test-author/SKILL.md db-rules/SKILL.md | head -20
 ```
 
 - `cpp-arch-review` 应为 `critical` / `major` / `minor` 三级；
