@@ -27,14 +27,14 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
       - C++ 规则：.claude/skills/code-rules/references/cpp.md
       - 其他语言规则：.claude/skills/code-rules/references/<lang>.md（按路由表，存在才加载）
       - 数据库规则：.claude/skills/db-rules/SKILL.md
-      - 架构规则：.claude/skills/cpp-arch-review/SKILL.md（仅涉及模块依赖/分层时加载）
-      - C++ 测试规则：.claude/skills/cpp-test-author/SKILL.md（编写/设计测试时）与 .claude/skills/cpp-test-review/SKILL.md（审查测试质量时）。仅涉及 C++ 测试文件时加载
+      - 架构规则：.claude/skills/arch-review/SKILL.md（仅涉及模块依赖/分层时加载）
+      - 测试规则：.claude/skills/test-author/SKILL.md（编写/设计测试时）与 .claude/skills/test-review/SKILL.md（审查测试质量时），另按语言加载各自 references/cpp.md 等。涉及测试文件时加载
    5. 对代码变更内容进行审查：
       - 生产代码：对照 code-rules 与该语言规则文件逐条检查 blocker 和 warning；语言已识别但无对应规则文件时，只应用 G-xxx 并在报告中标注「未加载语言专属规则：<lang>」
-      - C++ 测试代码：新建测试时对照 cpp-test-author 检查用例设计，审查测试质量时对照 cpp-test-review 逐条检查（测试文件不应用 code-rules 的生产代码规则）
-      - 其他语言测试/基准：code-rules 豁免，标注「测试/基准，豁免 code-rules；当前无对应语言测试技能，未审查」（C++ 测试文件仍按上一条审查，不适用本标注）
+      - 测试代码：新建测试时对照 test-author 检查用例设计，审查测试质量时对照 test-review 逐条检查（测试/基准文件不应用 code-rules 的生产代码规则）；非 C++ 语言无对应测试参考文件时，按 test-author/test-review 的降级路径标注「未加载语言专属细化/执行证据：<lang>」
+      - 基准测试：code-rules 豁免；test-review 保留执行链判据
       - 数据库脚本：对照 db-rules 检查
-      - 涉及模块依赖/分层/目录结构变更：对照 cpp-arch-review 检查
+      - 涉及模块依赖/分层/目录结构变更：对照 arch-review 检查
    6. 输出审查报告，列出违规项及修复建议
    7. 仅对 blocker 违规给出明确结论（是否阻塞提交），warning 仅列建议
    ```

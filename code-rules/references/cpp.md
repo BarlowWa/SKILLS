@@ -1,7 +1,7 @@
 # C++ 编码规范（code-rules / references）
 
 > 本文件由 code-rules 按扩展名路由加载（原独立的 C++ 规则技能已并入 `code-rules`）。工作流程、严重级别、审查输出格式、豁免与「冲突取更严者」见 `code-rules/SKILL.md`；**去重**：与本文件同义时以本文 ID 为准，见 SKILL.md『G ↔ 语言文件去重表』。
-> 本文 ID 为 C++ 专属命名空间，被 `cpp-arch-review`、`cpp-test-author`、`cpp-test-review`、`git-commit`、`plan-review` 交叉引用，**不得改名**。
+> 本文 ID 为 C++ 专属命名空间，被 `arch-review`、`test-author`、`test-review`、`git-commit`、`plan-review` 交叉引用，**不得改名**。
 
 ## Blocker 检查清单
 
@@ -198,7 +198,7 @@
 通用豁免（测试/基准/SQL/架构，按语言）见 `code-rules/SKILL.md`『豁免』。以下是 C++ 特有条目：
 
 - **C 互操作**：与 C 遗留库交互时，裸指针（MEM-003）、返回裸指针（MEM-004）、观测参数裸指针（MEM-005）、`void*`（BAN-006）和 C 风格强转（BAN-002）可例外，需在使用处注释说明 C 互操作需求及风险评估。
-- **测试文件**：`tests/`、`*_test.*`、`*_unittest.*` 的用例设计使用 `cpp-test-author`、质量审查使用 `cpp-test-review`。测试文件中的 `new`（测试框架宏内部）、断言字面量、全局注册宏等在本文规则下会误报，不应应用本文的任何规则。
+- **测试文件**：`tests/`、`*_test.*`、`*_unittest.*` 的用例设计使用 `test-author`、质量审查使用 `test-review`。测试文件中的 `new`（测试框架宏内部）、断言字面量、全局注册宏等在本文规则下会误报，不应应用本文的任何规则。
 - **基准**：`*_bench.cpp`、`bench/` 豁免本文**全部**规则。
 - 其余规则无一例外。
 
