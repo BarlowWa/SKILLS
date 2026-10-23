@@ -72,7 +72,7 @@ Application / UI
 
 ### 3. 头文件接口暴露
 
-- **ARCH-007**：public 头文件不应暴露实现细节。违规对象是**成员暴露了实现细节类型**（private/protected 成员引用了需 include 内部头/第三方头的类型、实现类的 `#include`、PIMPL 之外的内部嵌套类型），属于 minor。普通 private 数据成员不违规（与 cpp-rules OOP-005"成员默认 private"一致）
+- **ARCH-007**：public 头文件不应暴露实现细节。违规对象是**成员暴露了实现细节类型**（private/protected 成员引用了需 include 内部头/第三方头的类型、实现类的 `#include`、PIMPL 之外的内部嵌套类型），属于 minor。普通 private 数据成员不违规（与 code-rules（cpp.md）OOP-005"成员默认 private"一致）
 - **ARCH-008**：模块对外接口应精简。一个模块暴露超过 15 个公开类/函数时，考虑拆分为子模块，属于 minor
 - **ARCH-009**：禁止巨型头文件（>500 行）。拆分或引入 PIMPL 惯用法，属于 minor
 
@@ -183,9 +183,9 @@ Application / UI
 
 ## 与其他技能协同
 
-- `cpp-rules`（编码规范）负责**单文件内**问题（前向声明打破循环、平台 API 隔离、全局对象禁止），本技能负责**模块/依赖/分层/ABI** 级问题。二者重叠处口径如下：
-  - 循环依赖：`cpp-rules PLAT-004` 管文件级"用前向声明减少包含"，本技能 `ARCH-004/005/006` 管模块级依赖图成环；
-  - 全局静态/SIOF：`cpp-rules INIT-001` 管"禁止全局对象"，本技能 `ARCH-016/017` 管"已存在/必须存在的全局态如何跨模块暴露（DI 替代）"；
-  - 平台隔离：`cpp-rules PLAT-001` 管"OS 专有 API 隔离"，本技能 `ARCH-003` 管"第三方库适配层隔离"；
-  - 第三方封装：`cpp-rules PLAT-003` 管"第三方原生句柄/指针必须二次封装"，本技能 `ARCH-003` 管"模块级适配层与依赖方向"（业务代码可否直接 `#include` 第三方头）。
+- `code-rules`（编码规范）负责**单文件内**问题（前向声明打破循环、平台 API 隔离、全局对象禁止），本技能负责**模块/依赖/分层/ABI** 级问题。二者重叠处口径如下：
+  - 循环依赖：`code-rules（cpp.md）PLAT-004` 管文件级"用前向声明减少包含"，本技能 `ARCH-004/005/006` 管模块级依赖图成环；
+  - 全局静态/SIOF：`code-rules（cpp.md）INIT-001` 管"禁止全局对象"，本技能 `ARCH-016/017` 管"已存在/必须存在的全局态如何跨模块暴露（DI 替代）"；
+  - 平台隔离：`code-rules（cpp.md）PLAT-001` 管"OS 专有 API 隔离"，本技能 `ARCH-003` 管"第三方库适配层隔离"；
+  - 第三方封装：`code-rules（cpp.md）PLAT-003` 管"第三方原生句柄/指针必须二次封装"，本技能 `ARCH-003` 管"模块级适配层与依赖方向"（业务代码可否直接 `#include` 第三方头）。
 - `cpp-test-author` / `cpp-test-review`：测试目录按本技能"注意事项"放宽处理；测试用例设计归 `cpp-test-author`、测试质量审查归 `cpp-test-review`，本技能不审查测试代码。

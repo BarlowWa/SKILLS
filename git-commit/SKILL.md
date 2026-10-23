@@ -12,7 +12,7 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
 1. **检查状态**：运行 `git status` 和 `git diff --stat` 了解变更概览
 2. **分析差异**：对每个变更文件，读取关键差异（`git diff HEAD`，含暂存+未暂存），理解变更内容
 3. **生成提交信息**：基于变更内容，按 Conventional Commits 规范生成中文摘要
-4. **代码审查**：启动独立 agent 审查代码变更。仅审查代码文件（.h/.hpp/.cpp/.cc/.cxx/.hxx/.sql 等），对照对应技能规则检查。非代码文件跳过。
+4. **代码审查**：启动独立 agent 审查代码变更。仅审查代码文件（C++/Rust/Java/Python 源文件、测试与基准文件、.sql），对照对应技能规则检查。非代码文件跳过。
 
    审查 agent 指令：
    ```
@@ -20,16 +20,19 @@ description: 当用户要求提交代码、commit、生成 commit message 时激
 
    步骤：
    1. 运行 `git diff HEAD` 获取待提交的变更（包含暂存+未暂存）；再运行 `git ls-files --others --exclude-standard` 获取未跟踪（untracked）新文件，二者合并才是完整变更集
-   2. 仅筛选代码文件：C++（.h/.hpp/.cpp/.cc/.cxx/.hxx）、数据库脚本（.sql）
+   2. 仅筛选代码文件：C++（.h/.hpp/.cpp/.cc/.cxx/.hh/.hxx/.ipp/.inl/.tpp）、Rust（.rs）、Java（.java）、Python（.py/.pyi）、数据库脚本（.sql），以及各语言测试/基准路径（tests/、test/、src/test/、src/testFixtures/、benches/、test_*.py、*_test.py、*Test.java、*Tests.java、*IT.java、*_bench.*）
    3. 如果没有代码文件变更，直接报告「无代码变更，跳过审查」后结束
    4. 读取规则文件，从技能目录（通常为 .claude/skills/）加载：
-      - C++ 规则：.claude/skills/cpp-rules/SKILL.md
+      - 通用编码规则：.claude/skills/code-rules/SKILL.md（G 基线 + 语言路由表 + 豁免）
+      - C++ 规则：.claude/skills/code-rules/references/cpp.md
+      - 其他语言规则：.claude/skills/code-rules/references/<lang>.md（按路由表，存在才加载）
       - 数据库规则：.claude/skills/db-rules/SKILL.md
       - 架构规则：.claude/skills/cpp-arch-review/SKILL.md（仅涉及模块依赖/分层时加载）
-      - 测试规则：.claude/skills/cpp-test-author/SKILL.md（编写/设计测试时）与 .claude/skills/cpp-test-review/SKILL.md（审查测试质量时）。仅涉及测试文件时加载：tests/、*_test.*、*_unittest.*
+      - C++ 测试规则：.claude/skills/cpp-test-author/SKILL.md（编写/设计测试时）与 .claude/skills/cpp-test-review/SKILL.md（审查测试质量时）。仅涉及 C++ 测试文件时加载
    5. 对代码变更内容进行审查：
-      - C++ 生产代码：对照 cpp-rules 逐条检查 blocker 和 warning
-      - C++ 测试代码：新建测试时对照 cpp-test-author 检查用例设计，审查测试质量时对照 cpp-test-review 逐条检查（测试文件不应用 cpp-rules 的生产代码规则）
+      - 生产代码：对照 code-rules 与该语言规则文件逐条检查 blocker 和 warning；语言已识别但无对应规则文件时，只应用 G-xxx 并在报告中标注「未加载语言专属规则：<lang>」
+      - C++ 测试代码：新建测试时对照 cpp-test-author 检查用例设计，审查测试质量时对照 cpp-test-review 逐条检查（测试文件不应用 code-rules 的生产代码规则）
+      - 其他语言测试/基准：code-rules 豁免，标注「测试/基准，豁免 code-rules；当前无对应语言测试技能，未审查」（C++ 测试文件仍按上一条审查，不适用本标注）
       - 数据库脚本：对照 db-rules 检查
       - 涉及模块依赖/分层/目录结构变更：对照 cpp-arch-review 检查
    6. 输出审查报告，列出违规项及修复建议
