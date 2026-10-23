@@ -23,3 +23,6 @@ rotating_tmp_*/
 Thumbs.db
 __pycache__/
 node_modules/
+
+# 临时调研/脚本产物（本目录不入库）
+.tmp_research/
