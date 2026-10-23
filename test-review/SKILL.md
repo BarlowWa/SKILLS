@@ -18,7 +18,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | 语言 | 参考文件 | 状态 |
 | ---- | -------- | ---- |
 | C++ | `references/cpp.md`（gtest/Catch2/doctest、Death Test、CMake/CTest 证据、假阳性陷阱） | ✅ |
-| Rust | `references/rust.md` | ⏳ |
+| Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（待真实项目验收） |
 | Java | `references/java.md` | ⏳ |
 | Python | `references/python.md` | ⏳ |
 
@@ -155,7 +155,9 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | -- | ---- | ---- | ---- |
 | DEATH：死亡/崩溃断言使用边界 | C++ | `references/cpp.md` DEATH-001 | ✅ |
 | 执行证据的获取方式与假阳性陷阱 | C++ | `references/cpp.md` EXEC 证据 | ✅ |
-| 其他语言 | Rust/Java/Python | 首次真实项目时创建 | ⏳ |
+| 执行证据：cargo metadata / `--list` / doctest / nextest | Rust | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
+| 跳过形态：`#[ignore]` / cfg / guard+return；`should_panic` / `debug_assert` 陷阱 | Rust | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
+| 其他语言 | Java / Python | 首次真实项目时创建 | ⏳ |
 
 ---
 
