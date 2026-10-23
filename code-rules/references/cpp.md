@@ -1,7 +1,7 @@
 # C++ 编码规范（code-rules / references）
 
 > 本文件由 code-rules 按扩展名路由加载（原独立的 C++ 规则技能已并入 `code-rules`）。工作流程、严重级别、审查输出格式、豁免与「冲突取更严者」见 `code-rules/SKILL.md`；**去重**：与本文件同义时以本文 ID 为准，见 SKILL.md『G ↔ 语言文件去重表』。
-> 本文 ID 为 C++ 专属命名空间，被 `arch-review`、`test-author`、`test-review`、`git-commit`、`plan-review` 交叉引用，**不得改名**。
+> 本文 ID 为 C++ 专属命名空间，被 `arch-review`、`test-author` **按 ID 引用**（`test-review`、`git-commit`、`plan-review` 按技能名引用）；**不得改名**。
 
 ## Blocker 检查清单
 

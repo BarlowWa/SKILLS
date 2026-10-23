@@ -28,6 +28,7 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 
 > `.h` 也可能是 C 头文件：按项目语境判定；项目为纯 C 且已有 C 规则文件时按其执行，否则按 C++ 处理（`cpp.md` 的 C 互操作豁免适用）。
 > 以 `_` 开头的参考文件（如 `_template.md`）不参与路由。
+> **路由优先级**：先按扩展名、再看是否属于豁免路径；扩展名能唯一确定语言但目录未列出时，仍按该语言处理并在报告中注明依据，不得因路径未命中而静默跳过。多语言任务逐个语言分别加载。
 
 ## 严重级别
 
@@ -101,13 +102,14 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | ---- | -------- | -------- |
 | C++ | `tests/`、`test/`、`unittest/`、`*_test.*`、`*_unittest.*` | `test-author`（设计）/ `test-review`（审查） |
 | C++ | `*_bench.cpp`、`bench/`、`benchmark/` 基准 | 全部豁免 |
-| Rust | `tests/`、`benches/`、`examples/`；`src/` 内 `#[cfg(test)]` 模块 | `test-author` / `test-review`（语言参考未就绪时按其降级路径） |
+| Rust | `tests/`、`benches/`；`src/` 内 `#[cfg(test)]` 模块 | `test-author` / `test-review`（语言参考未就绪时按其降级路径） |
 | Java | `src/test/`、`src/testFixtures/`、`*Test.java`、`*Tests.java`、`*IT.java` | 同上 |
 | Python | `tests/`、`test_*.py`、`*_test.py`、`conftest.py` | 同上 |
 | 全部 | SQL / DDL / migration（`.sql`）不在本技能范围 | `db-rules` |
 | 全部 | 模块依赖、分层、循环依赖、API/ABI 等架构级问题 | `arch-review`（C++ 证据已就绪；其他语言按其降级路径） |
 
-- 测试/基准文件**豁免本技能全部规则**，由 `test-author` / `test-review` 负责；对应语言参考文件未就绪时，报告须写「未加载语言专属细化/执行证据：<lang>」，不得判为「通过」。
+- 测试文件**豁免本技能全部规则**，由 `test-author`（设计）/ `test-review`（审查）负责；对应语言参考未就绪时，报告须写「未加载语言专属细化/执行证据：<lang>」，不得判为「通过」。
+- 基准文件同样豁免 code-rules：`test-author` 不适用；`test-review` **仅保留执行链判据**（必须真的被构建并注册）。
 - 与 C 遗留库互操作时，C++ 文件可按 `references/cpp.md` 的「豁免」条款放宽，并在使用处注释说明。
 - **冲突一律取更严者**：通用基线与语言文件、或不同规则来源冲突时，取更严格的级别与要求，禁止让较松的来源静默降级。
 

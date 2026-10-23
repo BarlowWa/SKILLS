@@ -9,7 +9,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 
 ## 适用范围
 
-- **测试路径**：`tests/`、`test/`、`src/test/`、`test_*.py`、`*_test.*`、`*Test.java`、`*IT.java`、`*_unittest.*`（按路由判定）
+- **测试路径**：`tests/`、`test/`、`unittest/`、`src/test/`、`test_*.py`、`*_test.*`、`*Test.java`、`*IT.java`、`*_unittest.*`（按路由判定）
 - **审查依据不限于测试源码**：EXEC 组还必须读**构建配置**与**运行产物**（注册清单、测试报告、CI 结果）。仅凭测试源码**无法**判断测试是否真被构建、注册、执行——这三类恰是"缺席类"缺陷，在源码里表现为"看起来没问题"。
 - **不适用**：生产代码编码规范（`code-rules`）、测试用例设计（`test-author`）、模块架构（`arch-review`）
 

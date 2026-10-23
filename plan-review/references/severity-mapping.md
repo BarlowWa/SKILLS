@@ -1,6 +1,6 @@
 # 跨 skill 严重级别映射
 
-仅在审查涉及 C++ / 数据库实现、需引用他 skill 结论作依据时使用。本文件是**外部快照**——他 skill 的级别口径变更时须同步本表（下方附有核对命令）。
+仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前仅 C++ 有专属语言规则文件，其余语言按各技能降级路径）。本文件是**外部快照**——他 skill 的级别口径变更时须同步本表（下方附有核对命令）。
 
 ---
 
@@ -20,7 +20,7 @@
 # code-rules 的 blocker/warning 规则在 references/cpp.md（其他语言文件按需创建）
 grep -nE 'critical|blocker|warning|major|minor' \
   arch-review/SKILL.md code-rules/SKILL.md code-rules/references/cpp.md \
-  test-review/SKILL.md test-author/SKILL.md db-rules/SKILL.md | head -30
+  test-review/SKILL.md test-author/SKILL.md db-rules/SKILL.md
 ```
 
 - `arch-review` 应为 `critical` / `major` / `minor` 三级；
