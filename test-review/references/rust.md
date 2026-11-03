@@ -8,7 +8,7 @@
 
 - 机器可读的目标清单：在包/工作区根执行 `cargo metadata --format-version 1`，读 `packages[].targets[]` 的 `kind`（`lib`/`bin`/`test`/`bench`/`example`/`custom-build`）、`src_path`、`test`、`doctest`、`required-features`（官方文档：cargo-metadata）。
 - 测试源归属（ORG-001/002）：单元测试写在源文件的 `#[cfg(test)] mod tests`；集成测试放 `tests/`，每个顶层 `.rs` 独立编译为一个 crate（官方文档：Cargo Targets — Integration tests）。`tests/common/mod.rs` 是文档指定的共享辅助模块，**不是**测试目标，不得报「未进构建」。
-- 双向差集：`targets[]` 中 `kind = ["test"]` 的 `src_path` ↔ 仓库 `tests/**` 测试源；**不要**用文本搜 `tests/` 或 `mod` 就下结论。
+- 双向差集：`targets[]` 中 `kind = ["test"]` 的 `src_path` ↔ 仓库 `tests/**` 测试源；**不要**用文本搜 `tests/` 或 `mod` 就下结论。trybuild / compiletest 的夹具（`tests/ui/**`、`tests/compile-fail/**` 等）是测试**输入**，不是测试目标，差集必须排除；否则每个 fixture 都会被误报为「未进构建」。
 - `autotests = false` 关闭自动发现，未在 `[[test]]` 声明的 `tests/` 文件**不会被编译**（官方文档：Cargo Targets — Target auto-discovery）。这类文件在源码里完全正常，只能反查。
 - `required-features` 未启用的目标会被跳过（官方文档：Cargo Targets — required-features）：测试文件存在但 CI 未开对应 feature 时等于没跑，按 EXEC-001/EXEC-003 记录。
 - 测试层级（ORG-003）：集成测试只能用库的 public API；声明为 unit 却依赖真实网络/子进程/全局状态的，按层级失当处理。
@@ -17,13 +17,13 @@
 
 - Rust 没有 CTest 式单独注册步骤：Cargo 用 `--test` 编译测试目标，libtest 自动收集 `#[test]`（官方文档：cargo-test）。注册证据 = 目标清单 + 运行时 `--list`，不是 Cargo.toml 字面文本。
 - `cargo test` 默认目标：lib 单测、bins 单测、集成测试、lib 的 doctest；examples 仅编译不运行（官方文档：cargo-test — Target Selection）。
-- 工作区：workspace 根直接 `cargo test` 只跑 `default-members`；未设置时非 virtual workspace 用 root package，virtual workspace 用全部成员（官方文档：Cargo Workspaces）。**必须记录命令与 cwd**；CI 建议 `cargo test --workspace --all-features`，否则成员测试会静默缺席。
+- 工作区：workspace 根直接 `cargo test` 只跑 `default-members`；未设置时非 virtual workspace 用 root package，virtual workspace 用全部成员（官方文档：Cargo Workspaces）。**必须记录命令与 cwd**；CI 建议 `cargo test --workspace --all-features`，否则成员测试会静默缺席。夹具/辅助 crate 可能无法独立链接（符号由父包的测试目标定义），此时 `--workspace` 会失败；按项目 CI 的 `--exclude` 清单执行并记录，不得静默缩小范围。
 - doctest 只对 lib 目标生成且 `doctest = true`（默认）；`doctest = false` 关闭，bin-only crate 没有 doctest（官方文档：Cargo Targets — doctest）。
 
 ### 1.3 注册清单与执行状态（EXEC-002 / EXEC-003）
 
 - 清单：`cargo test --workspace --all-features -- --list`（Cargo 对每个测试目标分别调用 libtest）。需要机器可读的目标/产物信息时用 Cargo 侧的 `--message-format=json`，它必须放在 `--` **之前**，否则会被当成 libtest 参数。
-- **list 中出现 ≠ 会执行**：libtest 默认 `RunIgnored::No` 只保留 `ignore` 标记、不移除用例（源码：libtest `filter_tests` 中 `RunIgnored::No => {}`；`list_tests_console` 遍历过滤结果并累计 `desc.ignore`）。忽略状态须另查源码属性或运行输出中的 `ignored` 计数。
+- **list 中出现 ≠ 会执行**：libtest 默认 `RunIgnored::No` 只保留 `ignore` 标记、不移除用例（源码：libtest `filter_tests` 中 `RunIgnored::No => {}`；`list_tests_console` 遍历过滤结果并累计 `desc.ignore`）。**`--list` 输出本身不标注 ignored**（`ui: test ... ignored, requires nightly` 这类标记只在执行时出现）；忽略状态须另查源码属性、运行输出的 `ignored` 计数或 `--ignored` 复跑。
 - `#[ignore]` 用例仍被编译；`--ignored` 只跑忽略项，`--include-ignored` 两者都跑（官方文档：rustc Tests / Reference）。
 - `harness = false` 的目标自行提供 `main`，不走 libtest（官方文档：Cargo Targets — harness）；`--list` 不会枚举其用例，必须单独核对其收集/执行逻辑。
 - 可选证据：`cargo test --no-run --message-format=json` 可确认测试目标确实被编译（只编译不运行）。
@@ -33,7 +33,7 @@
 
 - 静态搜索 `#[test]` 会漏掉 `#[tokio::test]`、`#[rstest]`、`#[test_case]` 等过程宏生成的用例；**以 `--list` 的运行时清单为准**。
 - doctest 由 rustdoc 驱动的独立 harness 运行，通常在输出中单列（`Doc-tests <crate>`）；计数时单独核对，不要与 libtest 目标混算。以 `cargo test --doc` 的运行输出为准；`--list` 与该组合的实际行为按本机工具链版本核对。
-- 清单含 ignored，**不是**执行集合；对账前先按忽略状态分组。
+- 清单不标注 ignored，**不是**执行集合；对账前先按忽略状态分组（查源码属性或运行输出的 `ignored` 计数）。
 - 按名字双向差集（测试源码 ↔ 目标清单 ↔ `--list`），归一化模块路径与多字节/转义字符；不要用「声明总数 − 执行总数」判红。目标名 = 文件名 stem，可直接与 `tests/*.rs` 对照。
 
 ## 二、跳过与条件编译形态词表（EXEC-003 / EXEC-005）
@@ -59,10 +59,12 @@
 
 - `#[should_panic]`：panic 之后的语句永不执行；裸属性下「任何原因的 panic」都通过。应带 `expected = "子串"`（`MetaNameValueStr` 或 `MetaListNameValueStr`，子串匹配，官方文档：Reference — should_panic）；返回类型必须是 `()`。
 - `#[should_panic]` 测试中 panic 之前的断言若失败，失败本身也是 panic——裸属性会把它判绿；`expected` 可把这类错误原因的 panic 暴露出来。
-- `debug_assert!`：仅在非优化构建默认启用，优化构建被编译掉（官方文档：std `debug_assert!`）。依赖它触发 panic/失败的测试在 `cargo test --release` 下失真；结论须标注所用 profile。
+- `debug_assert!`：仅在非优化构建默认启用，优化构建被编译掉（官方文档：std `debug_assert!`）。依赖它触发 panic/失败的测试在 `cargo test --release` 下失真；结论须标注所用 profile。测试辅助代码中的 `debug_assert!` 属内部一致性检查，不作为被测契约的断言；仅当它是该用例唯一的验证手段时才按陷阱处理。
 - `?` 与提前返回：`#[test] fn f() -> Result<(), E>` 只有返回 `Ok` 才通过，`?` 把 `Err` 变成失败（合法）；但 `let _ = result;` 吞掉错误、`if let Ok(x) = ... { ... }` 无 else 时 Err 路径**静默通过**，其后的断言也不可达。
 - `catch_unwind`：断言只在捕获到 panic 时执行；须确认正常路径也有断言，且闭包满足 `UnwindSafe`。
 - 空测试/弱断言（ASRT-001/002）：只有 `assert!(true)`、只 `println!`、只验证 `is_ok()` 不验证值，按父技能判。
+- 编译期约束型测试（如 `fn assert_send<T: Send>() {}` 后在用例中实例化）的证据是**编译成功**，不是运行时断言，不按 ASRT-001 弱断言判；trybuild 的 compile-fail 用例同理，证据是预期编译失败。
+- 浮点相等断言：`.5`、`0.25` 等二进制可精确表示的值直接相等是安全的；整数值仅在尾数范围内精确（f64 `|n| ≤ 2^53`、f32 `|n| ≤ 2^24`），超出后 `2^53 + 1` 与 `2^53` 已无法区分；非精确运算或超范围的值须用容差（父技能 ASRT-003 例外）。
 - panic 策略：稳定 Cargo 下 tests/benchmarks **忽略** profile 的 `panic` 设置，libtest 以 unwind 构建才能在进程内捕获用例 panic（官方文档：Cargo Profiles — panic、rustc Tests）；若失败被误归因于 abort，先确认构建配置（含 `panic-abort-tests` 或自定义 harness），而非判测试缺陷。
 
 ## 四、doctest 执行链（EXEC-001/002/003/004；COV-001）

@@ -22,7 +22,7 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | 语言 | 扩展名 | 规则文件 | 状态 |
 | ---- | ------ | -------- | ---- |
 | C++ | `.h` `.hpp` `.cpp` `.cc` `.cxx` `.hh` `.hxx` `.ipp` `.inl` `.tpp` `.cppm` | `references/cpp.md` | ✅ 已就绪 |
-| Rust | `.rs` | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
+| Rust | `.rs` | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
 | Java | `.java` | `references/java.md` | ⏳ 首次真实项目时创建 |
 | Python | `.py` `.pyi` | `references/python.md` | ⏳ 首次真实项目时创建 |
 
@@ -117,5 +117,5 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 
 1. 复制 `references/_template.md` 为 `references/<lang>.md`；只收「模型默认会做错 / 本人明确偏好」的条目，不抄通用常识。
 2. 在上方路由表新增一行（扩展名 → 文件），在豁免表补该语言的测试/基准路径。
-3. 规则 ID 用该语言前缀（Rust 为 `RUST-<CAT>-NNN`，Java / Python 用 `JAVA-` / `PY-`；warning 类条目可沿用字母编号如 `RUST-LOG-W001`，与 C++ 的 `CPLX-W001` 同风格），**不与 C++ 现有 82 个 ID 共用命名空间**；G-xxx 是有意共享的基线。
+3. 规则 ID 用该语言前缀（Rust 为 `RUST-<CAT>-NNN`，Java / Python 用 `JAVA-` / `PY-`；warning 类条目可沿用字母编号如 `RUST-LOG-W001`，与 C++ 的 `CPLX-W001` 同风格），**不与 C++ 的 ID 命名空间共用**；G-xxx 是有意共享的基线。
 4. 完成判据：该语言某次真实审查报告中无已知漏报，且至少拦下 1 条真实违规。

@@ -50,7 +50,7 @@
 - 契约规定的 panic 用 `#[should_panic(expected = "...")]` 固定消息，**不要只写裸 `#[should_panic]`**——后者对任意 panic 都放行，区分度为零。
 - `catch_unwind` 仅在需要检查 panic **负载**或测试必须继续执行时使用；普通错误路径不要用 panic 模拟。
 - Drop 中 panic 与展开中的 panic 叠加会 **abort**，不能在同一进程内当普通用例验证；析构契约默认「不 panic」。
-- 测试 profile 必须可 unwind；`panic = "abort"` 不适配 libtest。
+- 稳定 Cargo 下测试会忽略 profile 的 `panic` 设置（官方文档：Cargo Profiles — panic），不能靠 `panic = "abort"` 改变测试行为；若启用不稳定的 `panic-abort-tests` 或自定义 harness，须先确认构建配置。
 - `debug_assert!` 与整数溢出 panic 只在 debug 生效；不要用「release 下回绕」的测试替代显式 `checked_*` / `saturating_*` 的断言。
 
 ## CONC-001 细化：异步与线程
@@ -91,6 +91,15 @@
 - rstest（可选）为每个 `#[case]` 生成独立测试，优于复制粘贴（OGN-001）。
 - 表驱动 `for` 循环整体算**一个**用例，首个失败即中止后续数据；关键边界应拆成独立用例或参数化 case，避免被前一个失败遮蔽。
 - doctest 也是测试：与集成测试一起设计契约（EXPECT/DIST 同样适用），不要只当作文档示例。
+
+## FFI / unsafe 接口的可测性
+
+- 先盘点既有测试：同一契约已有覆盖时补边界或错误路径，不重复 happy path（`test-review` COV-003）。
+- 先确认能从公共 API 构造被测值；构造不出来时用契约等价的可构造类型替代，并在设计里记录替换理由，不要为测试增加 `pub` 后门（ASRT-006）。
+- 极大值（`usize::MAX` 等）可能跨入 C++ `noexcept` 边界触发 abort；先查边界契约，无法确认时标「不可达 / 未能判定」，不要作为普通用例执行。
+- double-free、泄漏、数据竞争属 UB，普通断言无法可靠观测；用 Miri / sanitizer 验证或标「不可判定」，不要写「断言不会崩」的用例。
+- 公开可观测但无文档的行为，先记为「假设的契约」，用独立实现或规格核对后再写成 EXPECT；不得把被测实现的输出直接固化为期望值（ASRT-005）。
+- 测试夹具可能依赖父包测试目标定义的符号（C++ 符号、测试专用实现），外部 crate 无法独立链接；先确认夹具自包含性，或改用公共 API 构造。
 
 ## 本语言特有豁免
 

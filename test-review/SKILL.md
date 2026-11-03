@@ -18,7 +18,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | 语言 | 参考文件 | 状态 |
 | ---- | -------- | ---- |
 | C++ | `references/cpp.md`（gtest/Catch2/doctest、Death Test、CMake/CTest 证据、假阳性陷阱） | ✅ |
-| Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（待真实项目验收） |
+| Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（cxx 1.0.205 实测） |
 | Java | `references/java.md` | ⏳ |
 | Python | `references/python.md` | ⏳ |
 
@@ -91,6 +91,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 - **ASRT-002**：断言须验证关键语义。禁止平凡断言（`assertTrue(true)`、只断言非空后不验证具体行为）；相等比较用专用的相等断言（`EXPECT_EQ` / `assertEquals` / `assertEqual`）而非布尔真值断言，失败信息差异巨大。
   > 「平凡断言」指形式正确但内容空洞；「测试内重写被测逻辑」是另一类缺陷，见 ASRT-005。
 - **ASRT-003**：浮点比较禁止直接相等断言，使用带显式容差的近似断言。
+  > 例外：分母为 2 的幂的有限小数（`.5`、`0.25` 等）二进制可精确表示，直接相等是安全的；整数值仅在尾数范围内精确（f64 `|n| ≤ 2^53`、f32 `|n| ≤ 2^24`），超出后相邻整数不可区分。只有精确表示的值才免容差，其余一律按本条判。语言参考在此基础上细化，不得放宽。
 - **ASRT-004**：正确选用非致命断言（失败后继续）与致命断言（失败即终止当前用例）；依赖后续语句安全时（如解引用指针前）用致命断言提前拦截。
 - **ASRT-005**：禁止**镜像实现**——测试代码中不得重写一遍被测逻辑再与被测实现对比。典型形态：测试内重写算法、复制同源实现作参照、先运行被测实现再把输出固化成字面量当期望值。期望值必须来自契约、规格或独立算例。
   > **为何是 blocker**：镜像实现只验证「两处实现一致」，两处犯同一个错时测试照样通过。它无法通过覆盖率、断言数量等任何统计指标发现。**字面量**形态最隐蔽：断言写法上是常量、形似独立算例，但期望值实为照抄实现输出；审查时对**边界与错误用例的期望值**须重点追问来源。
@@ -155,8 +156,8 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | -- | ---- | ---- | ---- |
 | DEATH：死亡/崩溃断言使用边界 | C++ | `references/cpp.md` DEATH-001 | ✅ |
 | 执行证据的获取方式与假阳性陷阱 | C++ | `references/cpp.md` EXEC 证据 | ✅ |
-| 执行证据：cargo metadata / `--list` / doctest / nextest | Rust | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
-| 跳过形态：`#[ignore]` / cfg / guard+return；`should_panic` / `debug_assert` 陷阱 | Rust | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
+| 执行证据：cargo metadata / `--list` / doctest / nextest | Rust | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
+| 跳过形态：`#[ignore]` / cfg / guard+return；`should_panic` / `debug_assert` 陷阱 | Rust | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
 | 其他语言 | Java / Python | 首次真实项目时创建 | ⏳ |
 
 ---

@@ -26,15 +26,17 @@
 
 - **RUST-OWN-003**（blocker）：`Drop` 不得 panic，不得阻塞或等待；资源释放交给 RAII；`mem::forget` / `Box::leak` 必须有意为之并注释理由。
   > 为什么：Drop 中 panic 在 unwinding 期间会中止进程（double panic abort，按本机工具链版本核对）；阻塞型 Drop 会拖死 runtime；forget/leak 则永久泄漏。
+  > 例外：为阻止 panic 穿越 non-unwinding FFI 边界而**有意**在 Drop 中触发 abort（double panic）是安全机制，不算本条违规，但必须在紧邻处注明理由与边界契约。
   > 对应：G-RELEASE、API Guidelines C-DTOR-FAIL / C-DTOR-BLOCK。
 
 ## UNSAFE：不安全代码与 FFI
 
 > unsafe 是承诺，不是逃生舱：每个块都必须能被审阅者独立验证其安全前提。
 
-- **RUST-UNSAFE-001**（blocker）：每个 `unsafe` 块前必须有 `// SAFETY:`，逐条说明为何满足该 API 的安全前提；`unsafe fn` 必须有 `# Safety` 文档段。
-  > 为什么：无说明的 unsafe 无法审阅，前提变化后仍会被误认为「当时已证明」。
-  > 检测：Clippy `undocumented_unsafe_blocks`、`missing_safety_doc`。
+- **RUST-UNSAFE-001**（blocker）：`pub unsafe fn` / `pub unsafe trait` / `unsafe impl` 必须有 `# Safety`（或 `// SAFETY:`）段落，逐条说明调用方/实现方必须维持的前提；`unsafe` 块中涉及裸指针解引用或算术、`transmute`、跨 FFI 构造切片/引用、或依赖非局部不变量的，必须有 `// SAFETY:` 说明依据。
+  > 为什么：无说明的 unsafe 无法审阅，前提变化后仍会被误认为「当时已证明」；但仅直接调用 `unsafe extern` 声明、且契约已由类型级 `# Invariants` 或 FFI 文档保证的块，逐块重复论证收益很低。
+  > 判定：直接调用 `unsafe extern` 且能找到类型/文档级契约依据的块，缺块级注释记 **warning**；本条第 1 句列举的四类高风险块（裸指针解引用或算术、`transmute`、跨 FFI 构造切片/引用、依赖非局部不变量）缺说明记 **blocker**；所有缺失 `# Safety` 的 `pub unsafe fn` / `pub unsafe trait` / `unsafe impl` 亦记 **blocker**。
+  > 检测：Clippy `undocumented_unsafe_blocks`、`missing_safety_doc`；项目若显式 `allow` 这些 lint，须在仓库内说明理由，否则按本条判定。
 
 - **RUST-UNSAFE-002**（blocker）：禁止 `mem::transmute`；用 `from_ne_bytes` / `try_into` / 显式字节解析或 `zerocopy` 等替代。
   > 为什么：transmute 绕过全部类型检查，布局、大小、对齐不匹配即 UB。
@@ -51,6 +53,7 @@
 
 - **RUST-UNSAFE-005**（blocker）：`unsafe impl Send` / `Sync` 必须附 SAFETY，逐条说明内部字段为何满足 trait 合约。
   > 为什么：错误的 Send/Sync 会引入数据竞争，而编译器此后不再拦截；必须证明所有字段的跨线程访问方式。
+  > 与 RUST-UNSAFE-001 重叠时按本条报一次（001 负责其他 `unsafe impl` 与 unsafe trait）。
 
 - **RUST-UNSAFE-006**（warning）：unsafe 必须隔离在专用模块，对外只暴露安全 API（内部不变量在边界处校验并文档化）。
   > 为什么：把 unsafe 集中到少数模块，才能把审计面从整个 crate 缩到一个文件。
@@ -64,6 +67,7 @@
 - **RUST-ERR-001**（blocker）：生产路径禁止 `unwrap` / `expect`；`expect` 仅用于可证明不变量且必须带具体消息。
   > 为什么：panic 在生产等于请求级 DoS 或进程退出，且调用方无法捕获处理。
   > 反例：`serde_json::from_str(&body).unwrap()`、`lock().expect("mutex")`。
+  > 例外：proc-macro 中对解析器已保证的非空结构、或其他紧邻处已校验不变量并注释说明的 `unwrap`，记 warning；无说明仍为 blocker。
   > 检测：Clippy `unwrap_used` / `expect_used`。
 
 - **RUST-ERR-002**（blocker）：禁止丢弃 `Result` / `Option` 的错误——`let _ =`、`.ok()`、`mem::drop` 不得用于消除 `must_use` 警告。
@@ -96,6 +100,7 @@
 - **RUST-TYPE-001**（blocker）：整数窄化与符号转换禁止 `as`，用 `TryFrom` / `try_into()` 并处理错误。
   > 为什么：`as` 静默截断或回绕，越界值会变成看似合法的小数/负数。
   > 反例：`let n = u64_val as u32;`、`let i = u8_val as i8;`。
+  > 例外：FFI 或位运算中，若转换范围可由类型宽度、常量约束或紧邻校验静态证明，允许 `as` 并在紧邻处写明证明；无证明仍为 blocker。
   > 检测：Clippy `cast_possible_truncation`、`cast_sign_loss`、`cast_possible_wrap`。
 
 - **RUST-TYPE-002**（warning）：同宽无损转换用 `From` / `into`。
@@ -108,6 +113,7 @@
 
 - **RUST-TYPE-004**（blocker）：字符串/切片边界必须校验——`&s[..n]`、`split_at` 前用 `get` 或 `is_char_boundary` 确认 UTF-8 char boundary；`str::from_utf8` 必须处理错误；不得对不可信字节 `unwrap`。
   > 为什么：非 char boundary 的切片与非法 UTF-8 都会直接 panic，外部输入可稳定触发。
+  > 边界证明：`Utf8Error::valid_up_to()` 给出的偏移、或 `is_char_boundary(n) == true` 的检查结果，可作为切片合法性的证明，不必重复校验。
   > 依据：官方文档：`str::split_at`「Panics」；`str::from_utf8` 返回 `Result`。
 
 ## API：公开 API 设计
@@ -264,7 +270,7 @@
 
 ## 编写约束
 
-1. 本文 ID 统一使用 `RUST-` 命名空间，不与 C++ 的 82 个 ID、`G-*` 或 `ARCH-RS-*` 共用；引用时写全 ID。
+1. 本文 ID 统一使用 `RUST-` 命名空间，不与 C++ 的 ID、`G-*` 或 `ARCH-RS-*` 共用；引用时写全 ID。
 2. 每条规则必须指向可观测的代码形态（具体 token、属性、API 或构建配置），不写「保持整洁」类劝告。
 3. 每条须含「为什么 / 违反后果」，必要时给最短反例；仅纯风格条目可省略反例。
 4. 不重复 G-COMPLEX-DUP / PARAM / SRP / NEST；复杂度问题统一由 G 报。

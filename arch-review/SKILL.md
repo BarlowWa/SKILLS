@@ -52,7 +52,7 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 
 ### 2. 循环依赖
 
-- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）均判 critical——危害不随环长递减，更长的环更难发现、更难拆解。
+- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）均判 critical——危害不随环长递减，更长的环更难发现、更难拆解。（Rust 模块级环见 `references/rust.md` ARCH-RS-004。）
 - **ARCH-005**：循环依赖落在**声明/接口边界**（如头文件或模块接口互相包含）时，属于 major；用前向声明、接口抽取或分层打破，见语言参考。
 - **ARCH-006**：允许同一模块内的类型相互引用；但同一模块内 3 个以上类型形成引用环时，升级为 major。
 
@@ -101,8 +101,8 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | ARCH-018 构建 target 链接可见性 | `references/cpp.md` | ✅ |
 | ARCH-019 纯头文件库 | `references/cpp.md` | ✅ |
 | ARCH-020…023 API/ABI 兼容性 | `references/cpp.md` | ✅ |
-| Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
-| ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（待真实项目验收） |
+| Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
+| ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
 | Java / Python 证据与规则 | `references/<lang>.md` | ⏳ 首次真实项目时创建 |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。
@@ -167,5 +167,5 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
   - 全局静态：`code-rules`（C++：cpp.md）INIT-001 管"禁止全局对象"，本技能 ARCH-016/017 管"已存在/必须存在的全局态如何跨模块暴露"；
   - 平台隔离：`code-rules`（C++：cpp.md）PLAT-001 管"OS 专有 API 隔离"，本技能 ARCH-003 管"第三方库适配层隔离"；
   - 第三方封装：`code-rules`（C++：cpp.md）PLAT-003 管"第三方原生句柄/指针必须二次封装"，本技能 ARCH-003 管"模块级适配层与依赖方向"。
-  - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法，本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-004/006 判定。
+  - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法，本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-RS-004 判定。
 - `test-author` / `test-review`：测试目录按『注意事项』放宽；测试设计归 `test-author`、测试质量审查归 `test-review`，本技能不审查测试代码。

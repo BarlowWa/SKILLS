@@ -26,7 +26,7 @@
 
 1. crate 内模块边界按 `lib.rs` / `main.rs` 与 `mod` 树确定；从 `mod` 声明与 `use crate::` / `super::` / 绝对路径推导模块图，用 DFS/Tarjan 查环。
 2. 可选工具 `cargo modules`（第三方，非 Cargo 内置）可直接生成模块图；不可用时从源码推导并在报告中注明方法。
-3. **crate 级普通依赖环被 Cargo 拒绝**；**模块级环可以编译**（Rust 路径解析不要求声明顺序），但属设计问题，按 ARCH-004 处理。
+3. **crate 级普通依赖环被 Cargo 拒绝**；**模块级环可以编译**（Rust 路径解析不要求声明顺序）。模块不是编译单元，环本身不构成编译或链接危害；仅当环跨 crate 边界、或涉及 `pub` 公共 API 且导致分层倒置时记 minor（见 ARCH-RS-004）。
 
 ### 1.4 构建产物与补充证据
 
@@ -41,6 +41,7 @@
 
 业务逻辑放在 lib crate，`bin` 只做参数解析、装配与调用。否则集成测试无法 import bin（`tests/` 编译为独立 crate，只能用库的 public API），逻辑也不可复用。
 **证据**：`cargo metadata` 中 `targets[].kind` 只有 `["bin"]` 而无 `lib`；`src/main.rs` 的规模与它依赖的模块数。
+**豁免**：`examples/`、`demo/` 等示例 crate（`publish = false`、无对外契约、规模很小）不适用本条。
 
 ### ARCH-RS-002：公开面最小化（major）
 
@@ -50,11 +51,12 @@
 ### ARCH-RS-003：feature 必须 additive（major）
 
 启用 feature 不得关闭功能或改变 API 语义；任意组合都应可用，`--all-features` 必须能构建。互斥 feature（如 `foo` 与 `bar` 不能共存）属应避免的形态。组合验证可用 `cargo hack --feature-powerset check`（可选）。
+**互斥 feature 的变体**：多个 feature 同时启用时按优先级静默取值（如 C++ 标准取最大）也是互斥形态；若在文档中写明该优先级并用编译期断言/测试固定，记 minor；静默改变语义且无说明记 major。
 **依据**：官方文档 Cargo Book — Features：features 应可加，且不得引入 SemVer 不兼容变更。
 
 ### ARCH-RS-004：依赖环与 dev-dependency 环（major）
 
-普通依赖环被 Cargo 拒绝。**dev-dependency 环被允许**（foo 的 dev-dependency 依赖 bar，bar 正常依赖 foo），因为 dev-deps 不参与库本身构建；但它会让同一库出现两份拷贝（一份带测试、一份不带），两者类型不互通，**禁止用它绕过分层**。模块级环可编译，按 ARCH-004 / ARCH-006 视为设计缺陷。
+普通依赖环被 Cargo 拒绝。**dev-dependency 环被允许**（foo 的 dev-dependency 依赖 bar，bar 正常依赖 foo），因为 dev-deps 不参与库本身构建；但它会让同一库出现两份拷贝（一份带测试、一份不带），两者类型不互通，**禁止用它绕过分层**。模块级环在 Rust 内不构成编译或链接问题（模块不是编译单元）；仅当环跨越 crate 边界、或涉及 `pub` 公共 API 且导致分层倒置时记 minor。`lib.rs` / `mod.rs` 的 re-export（barrel）产生的边不计入环检测。
 **证据**：`cargo tree -e dev` / `-e normal,dev`；官方文档 Cargo Book — Resolver 的 dev-dependency cycles 一节。
 
 ### ARCH-RS-005：unsafe 隔离（major）
@@ -94,8 +96,9 @@ proc-macro crate 只负责语法到语法的转换，业务逻辑放普通 lib�
 - **no_std / feature-gated 模块**：默认 feature 下可能看不到整块代码；用 `--all-features` 再分析一次，并在报告中写明 feature 组合，避免把「未启用」误判为「不存在」。
 - **target-specific deps**：`[target.'cfg(...)'.dependencies]` 在 host 视角的 `cargo tree` 中会被过滤；跨平台评估需 `--target all` 或按目标 triple 分别分析。
 - **dev-dependencies**：只用于 `tests/`、`benches/`、`examples/`，不得进入架构主图；`cargo tree` 默认包含它们，务必显式 `--edges normal,build`。
-- **重复版本**：`cargo tree -d` 有输出很常见（传递依赖版本窗口不同），本身不是缺陷；但同一 workspace 内自控依赖重复 major，按 ARCH-RS-010 记 major。
+- **重复版本**：`cargo tree -d` 有输出很常见（传递依赖版本窗口不同），本身不是缺陷；它也可能列出**同一版本、不同 feature 集**的条目，这不是重复版本。判级前先核对版本号；同一 workspace 内自控依赖重复 major，按 ARCH-RS-010 记 major。
 - **workspace default-members**：在 workspace 根执行命令且未指定 package 时只作用于 `default-members`；「全部模块」的范围应用 `workspace_members` 或 `--workspace` 确认，否则会漏审。
 - **cargo tree 会合并 feature**：同一依赖在 `[dependencies]` 与 `[dev-dependencies]` 中启用不同 feature 时，`cargo tree` 可能合并显示并标 `(*)`；不要据此断言某 feature 只在测试路径使用。
-- **模块级环不会被 cargo build 拒绝**：必须在源码路径图上自行检测，不能因「能编译」就判为通过。
+- **模块级环**：Rust 模块不是编译单元，环不导致编译/链接问题；环检测用于发现分层倒置，`lib.rs` / `mod.rs` 的 re-export 桶边应排除后再判断，不能因「能编译」直接判 critical。
+- **软链/共享源码**：快照或仓库中经软链共享的目录可能被物化为多份相同文件（哈希一致）；不要据此报重复代码或复制粘贴缺陷。
 - **可选工具不是内置能力**：未安装 `cargo-semver-checks` / `cargo-public-api` / `cargo-hack` 等工具时，相关规则只能按源码启发式判断，报告须标注「工具不可用」而非「未发现问题」。
