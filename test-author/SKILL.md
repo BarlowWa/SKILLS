@@ -19,7 +19,7 @@ description: 编写/设计 C++ / Rust / Java / Python 测试时使用。先做�
 | 语言 | 测试扩展名 / 路径 | 参考文件 | 状态 |
 | ---- | ----------------- | -------- | ---- |
 | C++ | `*_test.cpp`、`*_unittest.*`、`tests/`、`test/`、`unittest/` | `references/cpp.md` | ✅ |
-| Rust | `tests/*.rs`、`src/**` 内 `#[cfg(test)]`、`///` doctest | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
+| Rust | `tests/*.rs`、`src/**` 内 `#[cfg(test)]`、`///` doctest | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测 + 26 条用例变异验证） |
 | Java | `src/test/**`、`*Test.java`、`*IT.java` | `references/java.md` | ⏳ |
 | Python | `test_*.py`、`*_test.py`、`tests/` | `references/python.md` | ⏳ |
 

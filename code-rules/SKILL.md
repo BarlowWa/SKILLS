@@ -22,7 +22,7 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | 语言 | 扩展名 | 规则文件 | 状态 |
 | ---- | ------ | -------- | ---- |
 | C++ | `.h` `.hpp` `.cpp` `.cc` `.cxx` `.hh` `.hxx` `.ipp` `.inl` `.tpp` `.cppm` | `references/cpp.md` | ✅ 已就绪 |
-| Rust | `.rs` | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
+| Rust | `.rs` | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；CONC / no_std 未被该样本覆盖，按文档判） |
 | Java | `.java` | `references/java.md` | ⏳ 首次真实项目时创建 |
 | Python | `.py` `.pyi` | `references/python.md` | ⏳ 首次真实项目时创建 |
 

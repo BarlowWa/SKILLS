@@ -18,7 +18,7 @@
 - Rust 没有 CTest 式单独注册步骤：Cargo 用 `--test` 编译测试目标，libtest 自动收集 `#[test]`（官方文档：cargo-test）。注册证据 = 目标清单 + 运行时 `--list`，不是 Cargo.toml 字面文本。
 - `cargo test` 默认目标：lib 单测、bins 单测、集成测试、lib 的 doctest；examples 仅编译不运行（官方文档：cargo-test — Target Selection）。
 - 工作区：workspace 根直接 `cargo test` 只跑 `default-members`；未设置时非 virtual workspace 用 root package，virtual workspace 用全部成员（官方文档：Cargo Workspaces）。**必须记录命令与 cwd**；CI 建议 `cargo test --workspace --all-features`，否则成员测试会静默缺席。夹具/辅助 crate 可能无法独立链接（符号由父包的测试目标定义），此时 `--workspace` 会失败；按项目 CI 的 `--exclude` 清单执行并记录，不得静默缩小范围。
-- doctest 只对 lib 目标生成且 `doctest = true`（默认）；`doctest = false` 关闭，bin-only crate 没有 doctest（官方文档：Cargo Targets — doctest）。
+- doctest 只对 **library 目标**生成且 `doctest = true`（默认）；`doctest = false` 关闭，bin-only crate 没有 doctest（`cargo test --doc` 报 `no library targets found`）。**proc-macro crate 也是 library 目标**（`[lib] proc-macro = true`，`cargo metadata` 的 `kind` 为 `["proc-macro"]` 且 `doctest: true`），其文档示例会被收集并运行——不要因 `kind` 不是 `lib` 就判定无 doctest（官方文档：Cargo Targets — doctest / proc-macro）。
 
 ### 1.3 注册清单与执行状态（EXEC-002 / EXEC-003）
 
@@ -76,10 +76,11 @@
   pub struct ReadmeDoctests;
   ```
   `#[cfg(doctest)]` 只在收集 doctest 时生效。
-- 生成条件：lib 目标 + `doctest = true`；`cargo test --doc` 单独跑。每个代码块用 rustc 即时编译为可执行文件并运行（官方文档：cargo-test — Documentation tests）；2024 edition 起兼容的 doctest 会先合并再运行，但仍各自独立进程（官方文档：rustdoc — standalone_crate）。
+- 生成条件：library 目标（含 proc-macro）+ `doctest = true`；`cargo test --doc` 单独跑。每个代码块用 rustc 即时编译为可执行文件并运行（官方文档：cargo-test — Documentation tests）；2024 edition 起兼容的 doctest 会先合并再运行，但仍各自独立进程（官方文档：rustdoc — standalone_crate）。
 - 编译/运行目录：rustdoc 编译在 workspace 根，运行 cwd 是包根（官方文档：cargo-test — Working directory of tests）。路径断言失败先核对这一点。
 - 属性语义（官方文档：rustdoc — Attributes）：`ignore` 完全不编译（伪代码/缺依赖）；`no_run` 只编译不运行；`compile_fail` 要求编译失败；`should_panic` 要求运行 panic；`ignore-<target>` 按目标跳过；`test_harness` 运行块内 `#[test]`；`#` 开头的行隐藏但参与编译。
 - CI 风险：只用 nextest 会**完全漏掉** doctest；`doctest = false` 或 bin-only crate 无 doctest。报告须写明「doctest 是否被收集与运行」。
+- 收集范围：私有项（`pub(crate)` / 私有 `mod` 内）的 doctest **会被收集**——名字以模块路径出现在 `--list` 里；`#[cfg(test)] mod tests` 内的 doctest **不会被收集**（该模块只在 test 构建可见）。前者是文档契约的一部分，后者不是测试目标，差集时须分别处理。
 - COV-001：doctest 多为 happy-path 示例，不能因其存在就认定错误路径已覆盖。
 
 ## 五、假阳性陷阱（定性前必读）

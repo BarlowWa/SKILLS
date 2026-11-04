@@ -7,7 +7,7 @@
 - **内置 libtest**（无需额外依赖）：
   - 单元测试放在 `#[cfg(test)] mod tests { use super::*; ... }`，可访问本 target 的**私有** API；
   - 集成测试放 `tests/*.rs`，**每个文件编译为独立 crate**，只能访问库的 **public API**；共享辅助代码放 `tests/common/mod.rs` 并 `mod common;`；
-  - doctest 是 `///` 文档注释中的示例，`cargo test` 默认运行，可单跑 `cargo test --doc`；每个代码块独立编译执行。
+  - doctest 是 `///` 文档注释中的示例，`cargo test` 默认运行，可单跑 `cargo test --doc`；每个代码块独立编译执行。**proc-macro crate 同样有 doctest**（它是 library 目标）；`#[cfg(test)]` 模块内的 doctest 不会被收集。
 - **可选 crate**（第三方，非标准库）：rstest（`#[case]`/`#[values]` 参数化）、trybuild（编译失败测试）、tokio（`#[tokio::test]`）、tempfile、serial_test、loom。
 - `#[should_panic(expected = "...")]` 的 `expected` 是**子串匹配**（panic 消息包含即通过），且该测试返回类型必须是 `()`；**panic 之后的语句永不执行**，不要把关键断言写在触发 panic 的语句之后（与 `test-review` EXEC-004 呼应）。
 - 测试函数可返回 `Result<(), E>`，返回 `Ok(())` 即通过，可用 `?`。**期望返回 `Err` 的用例写成普通 `#[test]` 并用 `assert!(matches!(...))`**，不要用 `#[should_panic]`——后者只描述 panic，不是错误返回值。

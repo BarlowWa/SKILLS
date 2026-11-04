@@ -101,8 +101,8 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | ARCH-018 构建 target 链接可见性 | `references/cpp.md` | ✅ |
 | ARCH-019 纯头文件库 | `references/cpp.md` | ✅ |
 | ARCH-020…023 API/ABI 兼容性 | `references/cpp.md` | ✅ |
-| Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
-| ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
+| Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
+| ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
 | Java / Python 证据与规则 | `references/<lang>.md` | ⏳ 首次真实项目时创建 |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。

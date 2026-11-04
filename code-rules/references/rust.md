@@ -17,12 +17,13 @@
 - **RUST-OWN-001**（warning）：参数优先借用——字符串、切片、路径分别用 `&str` / `&[T]` / `&Path`，禁止 `&String` / `&Vec<T>` / `&PathBuf`。
   > 为什么：具体容器类型把调用方绑死到一种存储，并多一层间接；接受 `&str` 才能同时接受 `String`、字面量与切片。
   > 反例：`fn load(p: &PathBuf)`、`fn parse(s: &String)`。
-  > 检测：Clippy `ptr_arg`、`needless_pass_by_value`。
+  > 例外：ABI 视图转换 API（典型的重解释查询器 `fn as_string(&self) -> &String`、`fn as_vec(&self) -> &Vec<T>`）必须返回具体容器类型以保持视图一致。本条约束的是**参数侧**借用；返回值侧由 RUST-API-004 的命名与 `RUST-TYPE` 组约束。
+  > 检测：Clippy `ptr_arg`（默认 warn，直接生效）、`needless_pass_by_value`（pedantic，需启用）。
 
 - **RUST-OWN-002**（warning）：禁止非必要的 `clone` / `to_owned` / `format!`。
   > 为什么：静默复制会掩盖所有权意图，并在热路径上按调用次数放大分配；跨所有权边界才复制，必要时用 `Cow`。
   > 反例：`let v = v.clone();` 之后只读；`format!("{}", s)` 代替 `s.to_string()`。
-  > 检测：Clippy `redundant_clone`、`clone_on_copy`。
+  > 检测：Clippy `clone_on_copy`（默认 warn，直接生效）；`redundant_clone` 属 nursery 组，官方已知存在漏报，只作人工判据，不依赖其门禁。
 
 - **RUST-OWN-003**（blocker）：`Drop` 不得 panic，不得阻塞或等待；资源释放交给 RAII；`mem::forget` / `Box::leak` 必须有意为之并注释理由。
   > 为什么：Drop 中 panic 在 unwinding 期间会中止进程（double panic abort，按本机工具链版本核对）；阻塞型 Drop 会拖死 runtime；forget/leak 则永久泄漏。
@@ -36,16 +37,18 @@
 - **RUST-UNSAFE-001**（blocker）：`pub unsafe fn` / `pub unsafe trait` / `unsafe impl` 必须有 `# Safety`（或 `// SAFETY:`）段落，逐条说明调用方/实现方必须维持的前提；`unsafe` 块中涉及裸指针解引用或算术、`transmute`、跨 FFI 构造切片/引用、或依赖非局部不变量的，必须有 `// SAFETY:` 说明依据。
   > 为什么：无说明的 unsafe 无法审阅，前提变化后仍会被误认为「当时已证明」；但仅直接调用 `unsafe extern` 声明、且契约已由类型级 `# Invariants` 或 FFI 文档保证的块，逐块重复论证收益很低。
   > 判定：直接调用 `unsafe extern` 且能找到类型/文档级契约依据的块，缺块级注释记 **warning**；本条第 1 句列举的四类高风险块（裸指针解引用或算术、`transmute`、跨 FFI 构造切片/引用、依赖非局部不变量）缺说明记 **blocker**；所有缺失 `# Safety` 的 `pub unsafe fn` / `pub unsafe trait` / `unsafe impl` 亦记 **blocker**。
-  > 检测：Clippy `undocumented_unsafe_blocks`、`missing_safety_doc`；项目若显式 `allow` 这些 lint，须在仓库内说明理由，否则按本条判定。
+  > 检测：Clippy `undocumented_unsafe_blocks`（restriction，需启用）；`missing_safety_doc`（默认 warn）只覆盖 `unsafe fn` 与 `unsafe trait`，**不覆盖 `unsafe impl`**——后者只能人工核对。项目若显式 `allow` 这些 lint，须在仓库内说明理由，否则按本条判定。
 
 - **RUST-UNSAFE-002**（blocker）：禁止 `mem::transmute`；用 `from_ne_bytes` / `try_into` / 显式字节解析或 `zerocopy` 等替代。
   > 为什么：transmute 绕过全部类型检查，布局、大小、对齐不匹配即 UB。
-  > 例外：确需时 SAFETY 必须证明源/目标布局一致、大小相等、目标值合法。
+  > 例外：确需时 SAFETY 必须证明源/目标布局一致、大小相等、目标值合法；`const_assert!` / `static_assert` 的机械布局断言可作为该证明的**引用依据**，但 SAFETY 注释本身不可省略。proc-macro 通过 `quote!` 生成的 transmute 同样受本条约束。
 
 - **RUST-UNSAFE-003**（blocker）：FFI 边界必须显式管控——`extern "C"` 不得 unwind；跨 FFI 结构体用 `#[repr(C)]`；不得跨 dylib 暴露 Rust 私有布局、泛型或 vtable。
   > 为什么：Rust panic 到达 non-unwinding ABI 边界会被转为 abort（Drop 是否运行未指定）；native 异常（如 C++）越入该边界才是 UB。Rust 无稳定 ABI，私有类型跨动态库边界布局无保证。
   > 做法：需要跨语言传播用 `extern "C-unwind"` 或 `catch_unwind`；边界类型只暴露 C ABI 类型。
-  > 依据：官方文档：Rust Reference「Unwinding」；Rustonomicon「FFI」。
+  > **FFI 入口一致性**：项目若已定义统一的 unwind 防护机制（如所有导出 shim 走同一个 guard 函数），所有 C ABI 导出 shim 必须走同一机制。单个 shim 靠 panic→abort 形式上满足「不 unwind」，但会绕过该机制、丢失防护标签，按 blocker 报。
+  > **edition 2024**：`extern` 块必须写 `unsafe extern`（2021 不要求）；缺失时 2024 crate 直接编译失败，按 blocker 报。
+  > 依据：官方文档：Rust Reference「Unwinding」；Rustonomicon「FFI」；Edition Guide「unsafe extern」。
 
 - **RUST-UNSAFE-004**（blocker）：禁止 `static mut`；用 `OnceLock` / `LazyLock` / `Atomic*` / `Mutex`。
   > 为什么：对 `static mut` 取引用本身即 UB（即使从不解引用）；edition 2024 下 `static_mut_refs` 默认 deny。
@@ -68,15 +71,15 @@
   > 为什么：panic 在生产等于请求级 DoS 或进程退出，且调用方无法捕获处理。
   > 反例：`serde_json::from_str(&body).unwrap()`、`lock().expect("mutex")`。
   > 例外：proc-macro 中对解析器已保证的非空结构、或其他紧邻处已校验不变量并注释说明的 `unwrap`，记 warning；无说明仍为 blocker。
-  > 检测：Clippy `unwrap_used` / `expect_used`。
+  > 检测：Clippy `unwrap_used` / `expect_used`（restriction，需启用）；两者存在形状漏报（如宏体内部定义的 `.unwrap()`），不能视为完备门禁。
 
 - **RUST-ERR-002**（blocker）：禁止丢弃 `Result` / `Option` 的错误——`let _ =`、`.ok()`、`mem::drop` 不得用于消除 `must_use` 警告。
   > 为什么：错误被静默吞掉后，调用方既得不到失败信号，也无从追溯；G-SWALLOW。
   > 做法：传播、显式处理，或注释「有意忽略及理由」；注释缺失即违规。
 
-- **RUST-ERR-003**（blocker）：库的公开错误类型必须实现 `std::error::Error + Send + Sync`（trait object 再加 `'static`）；禁止用 `Box<dyn Error>` / `anyhow::Error` 作为库的公开错误类型；禁止 `()` 作错误类型。
-  > 为什么：否则调用方无法组合、下转型或追溯根因，也无法把它包装进 `io::Error`。
-  > 依据：API Guidelines C-GOOD-ERR。
+- **RUST-ERR-003**（blocker）：库的公开错误类型必须实现 `core::error::Error + Send + Sync`（trait object 再加 `'static`）；`std` crate 直接适用，`no_std` crate 用 `core::error::Error`。禁止用 `Box<dyn Error>` / `anyhow::Error` 作为库的公开错误类型；禁止 `()` 作错误类型。
+  > 为什么：否则调用方无法组合、下转型或追溯根因，也无法把它包装进 `io::Error`（`std` crate 的典型场景）。
+  > 依据：API Guidelines C-GOOD-ERR；`core::error::Error` 自 Rust 1.81 起稳定。
 
 - **RUST-ERR-004**（warning）：可恢复错误用 `Result`，不用 `panic!` / `assert!`；`Option` 表达「无值」，不表达「失败」。
   > 为什么：panic 不可被调用方处理；Option 丢失失败原因，调用方无法区分「不存在」与「出错了」。
@@ -101,7 +104,7 @@
   > 为什么：`as` 静默截断或回绕，越界值会变成看似合法的小数/负数。
   > 反例：`let n = u64_val as u32;`、`let i = u8_val as i8;`。
   > 例外：FFI 或位运算中，若转换范围可由类型宽度、常量约束或紧邻校验静态证明，允许 `as` 并在紧邻处写明证明；无证明仍为 blocker。
-  > 检测：Clippy `cast_possible_truncation`、`cast_sign_loss`、`cast_possible_wrap`。
+  > 检测：Clippy `cast_possible_truncation`、`cast_sign_loss`、`cast_possible_wrap`（均属 pedantic，需启用）。
 
 - **RUST-TYPE-002**（warning）：同宽无损转换用 `From` / `into`。
   > 为什么：用 `as` 会掩盖意图，且重构改变类型时不会报错；`From` 会在类型不再兼容时编译失败。
@@ -142,7 +145,8 @@
 
 - **RUST-DOC-001**（blocker）：公开项必须有 `///` 文档；可能失败写 `# Errors`，可能 panic 写 `# Panics`，`unsafe fn` 写 `# Safety`。
   > 为什么：调用方无法预知失败、panic 与安全前提，只能读实现。
-  > 依据：API Guidelines C-FAILURE；Clippy `missing_errors_doc` / `missing_panics_doc` / `missing_safety_doc`。
+  > 检测：`missing_safety_doc`（默认 warn，直接生效）；`missing_errors_doc` / `missing_panics_doc` 属 pedantic，需启用。
+  > 依据：API Guidelines C-FAILURE。
   > 去重：unsafe 相关的 `# Safety` 缺失按 RUST-UNSAFE-001 报一次。
 
 - **RUST-DOC-002**（warning）：文档示例用 `?` 不用 `unwrap`；示例应能作为 doctest 编译运行；`no_run` 必须写明理由。
@@ -176,18 +180,20 @@
 ## CONC：并发与 async
 
 > async 的正确性依赖三件事：不阻塞、不跨 await 持锁、不丢任务。
+> **本组以 tokio 为示例实现**：API 名（`spawn_blocking` / `block_in_place` / `select!` / `JoinHandle`）取自 tokio。使用其他 runtime（async-std / smol / embassy 等）时，按**等价契约**判定：阻塞写法的对应替代、任务句柄的 join 语义、取消安全的等价保证；报告须注明所用 runtime 与对应的等价 API，不得因名称不匹配判为通过。（`await_holding_lock` 是 runtime 无关的 Clippy 标准 lint，检测 guard 跨 await，其他 runtime 同样适用。）
 
-- **RUST-CONC-001**（blocker）：async 任务中禁止阻塞——`std::thread::sleep`、同步 I/O、重 CPU 计算；用 `tokio::time::sleep`、异步 I/O、`spawn_blocking` / `block_in_place`。
+- **RUST-CONC-001**（blocker）：async 任务中禁止阻塞——`std::thread::sleep`、同步 I/O、重 CPU 计算；用 runtime 的异步定时器（如 `tokio::time::sleep`）、异步 I/O、`spawn_blocking` / `block_in_place` 的等价物。
   > 为什么：worker 线程被阻塞后，同 runtime 上的其他任务无法推进，延迟会整体放大。
 
 - **RUST-CONC-002**（blocker）：禁止跨 `.await` 持有 `std::sync::MutexGuard` / `RwLockGuard`。
   > 为什么：std guard 不是为跨 await 设计的，可能导致 lock 跨越任务调度；缩到无 await 的块内即可。
   > 例外：确需跨 await 持锁才用 `tokio::sync::Mutex`；std Mutex 通常更优，async mutex 更贵。
-  > 检测：Clippy `await_holding_lock`；依据：官方文档：`tokio::sync::Mutex`。
+  > 检测：Clippy `await_holding_lock`（suspicious，默认 warn，直接生效）；依据：官方文档：`tokio::sync::Mutex`。
 
-- **RUST-CONC-003**（blocker）：不得静默丢弃 `tokio::spawn` 返回的 `JoinHandle`。
+- **RUST-CONC-003**（blocker）：不得静默丢弃任务句柄（tokio 的 `tokio::spawn` 返回 `JoinHandle`，其他 runtime 有等价类型）。
   > 为什么：丢弃即 detach，任务错误与 panic 无人处理，任务生命周期也不受控。
-  > 做法：await 并处理 `JoinError`，或显式 `let _ =` 并注释「故意 detach」。
+  > 做法：await 并处理 join 错误，或显式 `let _ =` 并注释「故意 detach」。
+  > 检测：**无对应 Clippy lint**（`let_underscore_future` 只查未绑定的 Future，无法区分任务句柄），只能人工核对。
   > 依据：Tokio 文档：`JoinHandle`；G-SWALLOW。
 
 - **RUST-CONC-004**（warning）：多锁必须固定全局加锁顺序，缩小临界区，优先消息传递。
@@ -196,7 +202,7 @@
 - **RUST-CONC-005**（warning）：非 `SeqCst` 的 `Ordering` 必须注释说明选择理由。
   > 为什么：错误内存序造成难复现的可见性/数据竞争问题，review 时无法从代码看出意图。
 
-- **RUST-CONC-006**（warning）：`select!` 中的 future 必须 cancel-safe。
+- **RUST-CONC-006**（warning）：`select!`（或等价的「多 future 竞速」原语）中的 future 必须 cancel-safe。
   > 为什么：select! 完成一个分支会取消其余分支；非 cancel-safe API 被取消会丢数据或留下不一致状态。
   > 反例：在 `select!` 分支里直接 `read_exact` / `write_all`（官方文档列为非 cancel-safe）。
   > 依据：Tokio 文档：`select!`「Cancellation safety」。
@@ -211,10 +217,24 @@
 
 - **RUST-BUILD-001**（blocker）：CI 与本地必须执行 `cargo fmt --check` 与 `cargo clippy --all-targets --all-features -- -D warnings`，警告清零。
   > 为什么：依赖人工审查的规则无法规模化；警告堆积后 `-D warnings` 将不可用。
+  > **检测能力边界**：`-D warnings` 只把**默认级别为 warn** 的 lint 升级为 error，**不会启用** allow-by-default 的 lint。本文标注「需启用」的 lint（pedantic / restriction 组；nursery 组唯一相关的 `redundant_clone` 只作人工判据，见 RUST-OWN-002）在裸命令下不会报，相关规则的机械门禁为 0，只能靠人工。
+  > **推荐基线**（逐条 `-W`；**不要**启用 `clippy::pedantic` / `clippy::restriction` 整组——整组会引入大量与本文无关的噪声）：
+  > ```text
+  > cargo clippy --all-targets --all-features -- \
+  >   -D warnings \
+  >   -W clippy::needless_pass_by_value \
+  >   -W clippy::cast_possible_truncation -W clippy::cast_sign_loss -W clippy::cast_possible_wrap \
+  >   -W clippy::unwrap_used -W clippy::expect_used \
+  >   -W clippy::undocumented_unsafe_blocks \
+  >   -W clippy::allow_attributes_without_reason \
+  >   -W clippy::missing_errors_doc -W clippy::missing_panics_doc
+  > ```
+  > 测试与基准路径（`tests/`、`benches/`、`#[cfg(test)]`）按 SKILL.md『豁免』不受编码规则约束，`unwrap_used` 等会误伤：须在测试 target 上 `#[allow]` 或在 CI 中分开执行，并把该策略写进仓库说明。基线可按项目裁剪，裁剪须记录理由。
+  > 工具行为引用自 Clippy lint 列表（分组与默认级别），版本变化时按本机工具链重新核对。
 
-- **RUST-BUILD-002**（warning）：`#[allow(...)]` 必须带理由；禁止无理由的 crate 级 allow。
+- **RUST-BUILD-002**（warning）：`#[allow(...)]` 必须带理由；禁止无理由的 crate 级 allow。crate 级 `#![allow(a, b, c)]` 单行多 lint 时，须整体给出一条覆盖全部的理由或逐条理由；只覆盖其中一部分不算通过。`#[expect(...)]` 同样必须带理由，且过期未触发会报 `unfulfilled_lint_expectations`（`-D warnings` 下直接失败），须随代码变化清理。
   > 为什么：`#![allow(dead_code)]` 之类会永久掩盖新问题，且没有到期机制。
-  > 检测：Clippy `allow_attributes_without_reason`。
+  > 检测：Clippy `allow_attributes_without_reason`（restriction，需启用）。
 
 - **RUST-BUILD-003**（warning）：可不使用 unsafe 的 crate 加 `#![forbid(unsafe_code)]`；含 unsafe 的 crate 开 `#![deny(unsafe_op_in_unsafe_fn)]`。
   > 为什么：让新增 unsafe 成为显式、可审查的决策，而不是在 unsafe fn 内隐式扩散。
@@ -258,14 +278,20 @@
 
 - **RUST-PERF-W002**（warning）：已知容量时用 `with_capacity` 预分配；索引用途明确时优先迭代器。
   > 为什么：反复 realloc 与手工下标都增加成本与越界面。
-  > 检测：Clippy `needless_range_loop`。
+  > 检测：Clippy `needless_range_loop`（style，默认 warn，直接生效）。
 
 ## 本语言专属豁免
 
 - **测试/基准**：`tests/`、`benches/`、`src/` 内 `#[cfg(test)]` 模块按 `code-rules/SKILL.md` 全量豁免，交 `test-author`（设计）/ `test-review`（审查）；`#[bench]` 与基准同样豁免。
 - **FFI 模块**：可在 `// SAFETY:` 说明下使用裸指针、`union`、`extern` 声明；UNSAFE-002 的 transmute 禁令不因 FFI 放宽，确需时仍须给出布局/大小证明。
 - **build.rs**：可执行构建期命令、读写 `OUT_DIR`，但仍受 G-SECRET / G-CMDINJ 与 RUST-SEC-001 约束；构建期生成的值不等于运行时密钥。
-- **生成代码（OUT_DIR / bindgen 产物）**：风格类问题（OWN/API/DOC/PERF）只作 warning，不阻塞提交；安全类 blocker 仍须在生成配置或调用边界修复。
+- **生成代码（OUT_DIR / bindgen 产物 / proc-macro 展开产物）**：风格类问题（OWN/API/DOC/PERF）只作 warning，不阻塞提交；安全类 blocker 仍须在生成配置、宏的输入写法或调用边界修复。proc-macro 展开出的 `transmute`、`unsafe impl`、`unsafe extern` 同属生成代码，但**宏定义处的输入写法**（`quote!` 模板本身）按源码审查，不受本条豁免。
+- **no_std crate**（`#![no_std]`，用 `core` / `alloc`）：
+  - **默认全部规则照常适用**；下列四点是本文件中最常被误判的差异，不代表其余规则不适用。
+  - 错误类型按 RUST-ERR-003 用 `core::error::Error`（按本机工具链版本核对，Rust 1.81+ 可用）。
+  - RUST-CONC 组的 tokio 示例不适用；按所选的异步/并发设施（如 `embassy`、`core` 原子、`critical-section`）依等价契约判定。
+  - RUST-LOG / RUST-DOC / RUST-PERF 的判据不依赖 std，照常适用；`RUST-BUILD-003`（`forbid(unsafe_code)` / `deny(unsafe_op_in_unsafe_fn)`）同样适用。
+  - 测试代码不在本条豁免范围（测试目标通常可用 std）；但 `#[cfg(test)]` 单测若在 no_std crate 内，`format!` 等需 `alloc` 的宏不可用，需 `extern crate alloc` 或改用 `core::write!`，这是设计限制而非规则问题。
 - **文档示例**：按 RUST-DOC-002 执行；`unwrap` 仅允许出现在 `compile_fail` 或明确标注的反例中。
 
 ## 编写约束
