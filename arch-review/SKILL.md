@@ -38,6 +38,8 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | major | 设计问题，增加维护成本，应修复 |
 | minor | 优化建议，可逐步改进 |
 
+**冲突取更严者**：通用 ARCH 规则与语言参考冲突时取更严的级别与要求，禁止让较松的来源静默降级；同一缺陷在多个位置被定义时**只报一次**，并注明所依据的规则 ID（如「按 ARCH-RS-004」）。例外：语言参考已为该语言形态**单列分级**时（如 ARCH-004 → ARCH-RS-004），以语言参考为该形态的唯一判级依据，不适用「取更严」——否则语言特化失去意义；若同一形态另由其他技能（如 `code-rules` 的 blocker）定义，按「与其他技能协同」的分工交给该技能报，本技能不重复降级报告。
+
 ---
 
 ## 检查维度（语言无关）
@@ -52,7 +54,7 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 
 ### 2. 循环依赖
 
-- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）均判 critical——危害不随环长递减，更长的环更难发现、更难拆解。（Rust 模块级环见 `references/rust.md` ARCH-RS-004。）
+- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）默认判 critical——危害不随环长递减，更长的环更难发现、更难拆解。**判级以语言参考为准**：语言参考为该语言形态单列了分级时（如 Rust 的 crate 级 / dev-dependency 环与模块级环见 `references/rust.md` ARCH-RS-004），按语言参考执行，本条不复报；语言参考未覆盖该语言时按本条的 critical。
 - **ARCH-005**：循环依赖落在**声明/接口边界**（如头文件或模块接口互相包含）时，属于 major；用前向声明、接口抽取或分层打破，见语言参考。
 - **ARCH-006**：允许同一模块内的类型相互引用；但同一模块内 3 个以上类型形成引用环时，升级为 major。
 
@@ -167,5 +169,5 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
   - 全局静态：`code-rules`（C++：cpp.md）INIT-001 管"禁止全局对象"，本技能 ARCH-016/017 管"已存在/必须存在的全局态如何跨模块暴露"；
   - 平台隔离：`code-rules`（C++：cpp.md）PLAT-001 管"OS 专有 API 隔离"，本技能 ARCH-003 管"第三方库适配层隔离"；
   - 第三方封装：`code-rules`（C++：cpp.md）PLAT-003 管"第三方原生句柄/指针必须二次封装"，本技能 ARCH-003 管"模块级适配层与依赖方向"。
-  - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法，本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-RS-004 判定。
+  - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法（含 `unsafe impl Send/Sync` 的 SAFETY 论证 = RUST-UNSAFE-005、`unsafe extern` 与 FFI 边界写法），本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；对外发布面的 API 契约（SemVer、`#[non_exhaustive]` / sealed 的**发布策略**）归 ARCH-RS-007，单类型如何写（何时加 `#[non_exhaustive]`、sealed 的实现方式）归 RUST-API-002，重叠处按 code-rules 报一次；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-RS-004 判定。
 - `test-author` / `test-review`：测试目录按『注意事项』放宽；测试设计归 `test-author`、测试质量审查归 `test-review`，本技能不审查测试代码。

@@ -1,6 +1,6 @@
 # 阻塞判定标准
 
-本文件定义 `plan-review` 三级严重级别的判定口径，供审查子 agent 分级时参照，避免凭感觉分级。
+本文件定义 `plan-review` 三级严重级别的判定口径，供审查子 agent 分级时参照，避免凭感觉分级；文末附**跨 skill 级别换算表**（审查涉及 C++ / 数据库实现、引用他 skill 作依据时用）。
 
 ---
 
@@ -75,6 +75,18 @@
 | 仅影响局部判断的外部前提未标注 | minor | 同上，影响面小 |
 
 > 拿不准时**从宽**（倾向标 major 而非 blocker），避免误判导致无效复审循环；但「照做必错」与「无法落地」两类场景必须坚决标 blocker。
+
+---
+
+## 与其他 skill 的级别换算
+
+仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ 与 Rust 有专属语言规则文件，Java / Python 按各技能降级路径）。**本表已从 `references/severity-mapping.md` 内联至此**——审查子 agent 只需加载本文件即可换算，无需另读第三个 reference。本表是**外部快照**，他 skill 的级别口径变更时须同步本表；独立的核对命令保留在 `references/severity-mapping.md`（该文件仍保留，供脱离本技能单独核检）。
+
+- **blocker** ≈ 各 skill 的**最高级**：`code-rules` blocker、`arch-review` critical、`test-review` blocker、`test-author` blocker、`db-rules` blocker
+- **major** ≈ `arch-review` major（其余 skill 为两级，无对应级）
+- **minor** ≈ `arch-review` minor、各两级 skill（`code-rules` / `test-review` / `test-author` / `db-rules`）的 `warning`
+
+> 现有 skill 的严重级别并不统一（两级与三级并存），引用时以本表为准换算。注意两级 skill 的 `warning` 只能落到本技能 `minor`——两级 skill 中「不阻塞提交」的建议，在本技能里没有 `major` 的对应级，不要为了对齐而拔高或压低其级别。
 
 ---
 

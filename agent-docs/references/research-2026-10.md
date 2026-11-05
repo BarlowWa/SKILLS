@@ -1,8 +1,9 @@
 # Agent 文档组织：调研来源与证据（2026-10-19）
 
-> **时效声明**：本文的数字、行数上限、工具行为均为 2026-10 的核实结果。
+> **时效声明**：本文的数字、行数上限、工具行为均为 2026-10 的核实结果；
+> 2026-11-04 依据当前官方文档修订了 `paths:` 加载行为与「七种手段」口径。
 > 引用前先核对原始文档；判据（如「删掉不会让 agent 犯错就删」）比数字稳定得多。
-> `last-verified: 2026-10-19`
+> `last-verified: 2026-11-04`
 
 ## 一、Claude Code 官方规定
 
@@ -30,26 +31,56 @@
 - 该写：agent 猜不到的 Bash 命令、偏离默认的风格、测试方式、仓库礼仪、架构决策、
   环境怪癖、gotcha。
 - 不该写：代码可推断者、通用语言规范、详细 API 文档、易变信息、长篇教程、逐文件说明。
-- 判据原句："Would removing this cause Claude to make mistakes? If not, cut it."
-  膨胀后 "important rules get lost in the noise"；`IMPORTANT` 只加在一条上。
-- 确定性约束放 hooks："Unlike CLAUDE.md instructions which are advisory, hooks are
-  deterministic"。
-- 点名失败模式："The over-specified CLAUDE.md … Ruthlessly prune."
+- 判据 *"Would removing this cause Claude to make mistakes? If not, cut it."* 在官方
+  best-practices / memory 全文检索**未命中**（2026-11-04 核实），属**内部实践总结 / 非官方
+  原文**；判据本身可用，但引用时勿冠以官方出处。
+- 膨胀的代价是真实存在的：官方点名 `IMPORTANT` 堆叠会反噬（「piling on emphasis mostly
+  makes Claude over-apply the rule」），文件过长会让核心行「gets lost」——参见下方的
+  确定性/非确定性二分（同一页）。
+- 确定性约束放 hooks：官方把指令分为 non-deterministic（CLAUDE.md / skill，模型可自行判断）
+  与 **deterministic**（hook / deny rule / managed setting，harness 强制执行）两类；
+  必须每次发生的事归后者。
 
-### 1.1 `paths:` 门控的已知缺陷（2026-10-23 补记，多语言规则分流时必读）
+### 1.1 `paths:` 门控的加载行为（2026-11-04 依据当前官方文档修订）
 
-skill 与 `.claude/rules/` 都支持 `paths:` glob 门控，文档称「命中文件才加载」。实查其触发不可靠：
+**当前行为（官方文档，v2.1.212）**：带 `paths:` 的路径规则是**按需**的——「A path-scoped
+rule loads when Claude uses the Read, Write, or Edit tool on a matching file」，并且「when
+Claude views a matching file with a Bash command that counts as a read, such as `cat` or
+`head`」（<https://code.claude.com/docs/en/memory.md#path-specific-rules>）。**不带
+`paths:` 的 `.claude/rules/` 在 launch 时即载入**：「Rules without `paths` frontmatter are
+loaded at launch with the same priority as `.claude/CLAUDE.md`」。嵌套 `CLAUDE.md` 另属一条
+机制：子目录文件不在 launch 载入，「Claude Code loads each one once Claude reads, writes,
+or edits another file in that subdirectory」。
 
-- <https://github.com/anthropics/claude-code/issues/62049>：skill 的 `paths:` 从未触发自动加载
-  （closed as stale，从未修复）。
-- <https://github.com/anthropics/claude-code/issues/90004>（open）：auto 模式的 `bashFirst`
-  让模型用 Bash 读写文件，而门控只监听 Read/Edit/Write → 永不激活。
-- <https://github.com/anthropics/claude-code/issues/93248>（open）：rules 与 skill 的 `paths:`
-  都只在 **Read** 时触发，**新建文件不触发**——恰是最需要规则的场景。
+> ⚠️ **v2.1.211 变更点的常见误读**：文档「Before v2.1.211, rules that load on demand …
+> loaded even when `project` was excluded」指的是**按需载入的规则不再绕过
+> `--setting-sources` 排除 project 设置**；它**不是**「路径规则从按需改成 launch 载入」。
+> 路径规则始终是按需的。
 
-**结论**：按扩展名/路径分流规则时，不依赖 `paths:`，改在 SKILL.md 正文放
-「扩展名 → references 文件」路由表由模型显式 Read，并写明「识别成功但无对应文件 → 应用通用基线并注明」。
-（本仓库 `code-rules` 即按此实现。）
+**历史 issue（旧版记录，仅作历史，勿当当前事实）**：
+
+- <https://github.com/anthropics/claude-code/issues/62049>（**closed，`not_planned`**；标签
+  `bug`、`has repro`、`stale`、`platform:windows`、`platform:vscode`、`area:skills`）：报告
+  skill 的 `paths:` 从未触发自动加载。**上游附有复现步骤（`has repro`），但关闭结论为
+  not_planned / stale**——「附有复现步骤」不等于「已在本机复现或已定位根因」，只能作为历史
+  记录，勿当当前事实。
+- <https://github.com/anthropics/claude-code/issues/90004>（**open**；标签 `bug`、`has repro`、
+  `platform:linux`、`area:tools`、`area:skills`）：auto 模式的 `bashFirst` 让模型用 Bash 读写
+  文件，而门控只监听 Read/Edit/Write → 可能不激活。**上游附有复现步骤（`has repro`）**；
+  注：官方文档明确「Bash 中 `cat`/`head` 这类算作 read 的命令会触发」，故该 issue 描述的
+  可能只是一部分 Bash 场景。**本机是否仍可复现：未能判定**（未在当前版本实测）。
+- <https://github.com/anthropics/claude-code/issues/93248>（**open**；标签 `enhancement`、
+  `area:core`、`area:skills`）：**这是 FEATURE 请求，绝不是已确认缺陷**——作者希望 `paths:`
+  也对「新建文件」的 target path 匹配（当前只对 Read/Write/Edit 匹配）。现状「新建文件不
+  触发」属设计行为，非 bug。（标注为 `enhancement`，无 `bug` / `has repro` 标签。）
+
+**结论（经验性建议，不是「因为它坏了」）**：按扩展名/路径分流规则时，**优先**在 SKILL.md
+正文放「扩展名 → references 文件」路由表由模型显式 Read，并写明「识别成功但无对应文件 →
+应用通用基线并注明」。理由：路由表**可读、可测、不依赖任何触发机制**，比隐式的 `paths:`
+更可控；即便路径规则可靠，显式路由也更易审查。（本仓库 `code-rules` 即按此实现。）
+「`paths:` 当前不可靠」这一硬结论**未能判定**——`bashFirst` 场景（#90004）是否仍存在，
+需在当前版本实测确认。
+
 
 ## 二、知识该放哪（官方博客）
 
@@ -58,10 +89,19 @@ skill 与 `.claude/rules/` 都支持 `paths:` glob 门控，文档称「命中�
 | 载体 | 加载方式 | 适用 |
 |---|---|---|
 | CLAUDE.md | 每会话全文 | "always do X"、构建命令、架构 |
-| `.claude/rules/` | 每会话；带 `paths:` 则命中文件才载 | 语言/目录特定约束 |
+| `.claude/rules/` | 无 `paths:` 则 launch 载入；带 `paths:` 则对匹配文件 Read/Write/Edit 时按需载入 | 语言/目录特定约束 |
 | Skill | 启动仅 name+description，正文按需 | 多步 playbook、参考文档 |
 | Subagent | 独立窗口，只回摘要 | 深搜、并行、防污染主上下文 |
 | Hook | 事件触发，零常驻 | 必须每次发生的事 |
+| Output styles | 每会话进 system prompt，不被 compact，首请求后缓存 | 全局行为/人格；遵从度最高，须节制 |
+| `--append-system-prompt` | 调用时传入，仅对该次调用生效、不持久 | 特定编码标准/输出格式/领域知识 |
+
+**官方口径是「七种手段」**：CLAUDE.md、rules、skills、subagents、hooks、**output styles**、
+**appending the system prompt**。「There are seven methods for instructing Claude's
+behavior」。plugin / managed settings **不是第八种指令手段**，而是其中若干手段的**打包分发层**
+（「bundle many of them (skills, subagents, hooks, output styles) as a plugin」；
+skill 也可「distribute it through a plugin or managed settings」，
+<https://code.claude.com/docs/en/skills>）。
 
 触发规则：同一约定**错第二次** → 写进 CLAUDE.md；同一 playbook **第三次粘贴** → 做成 skill；
 30 行流程 → skill；"never" 类硬约束 → hook / permissions。
@@ -121,7 +161,7 @@ skill 与 `.claude/rules/` 都支持 `paths:` glob 门控，文档称「命中�
 | 仓库 | 结构 | 要点 |
 |---|---|---|
 | <https://github.com/anthropics/claude-code/blob/main/CLAUDE.md> | 根 CLAUDE.md 约 **40 行 / 2.2KB** | 只写 GitHub Actions 安全加固 3 条，并指向 `.github/scripts/check_workflow_hardening.py` 与豁免表——**文档配机械校验** |
-| <https://github.com/apache/airflow/blob/main/AGENTS.md> | 根 AGENTS.md **251 行 / 22.5KB**，另 3 个嵌套文件 | 用 `<!-- START generated-commands ... auto update -->` 标记自动生成命令段 |
+| <https://github.com/apache/airflow/blob/main/AGENTS.md> | 根 AGENTS.md 约 250 行、20+ KB，另 3 个嵌套文件 | 用 `<!-- START generated-commands ... auto update -->` 标记自动生成命令段 |
 | <https://github.com/gastownhall/beads/blob/main/AGENTS.md> | 根 AGENTS.md 末尾有**路由表** | "改到 cmd/bd/ → 先读 cmd/bd/AGENTS.md"；`CLAUDE.md` 是同级 AGENTS.md 的 symlink |
 | openai/codex | 2026-09-30 删除仓库内 Codex 指引（19 文件 / −2,310 行），当前 main 无 AGENTS.md | 头部仓库长期保留指令文件**不是**必然规律 |
 
@@ -163,7 +203,7 @@ skill 与 `.claude/rules/` 都支持 `paths:` glob 门控，文档称「命中�
 | 规则互相矛盾 | 模型任选其一，行为不稳定 | 定期审阅；`/doctor prompt-audit` |
 | 把变更日志/历史塞进常驻文件 | 每会话付费、稀释注意力 | 历史进 `docs/changes` 或本地 plans |
 | 复制多份 CLAUDE.md/AGENTS.md | 漂移、互相矛盾 | `@AGENTS.md` 或 symlink 单一真源 |
-| 根文件 500+ 行 | 规则被整体忽略 | 拆 path-scoped rules / 嵌套文件；import 不省 token |
+| 根常驻文件过长（官方建议每份 CLAUDE.md < 200 行；社区共识 < 300 行） | 规则被整体忽略 | 拆 path-scoped rules / 嵌套文件；import 不省 token |
 | 文档与代码行为不符 | agent 按旧规格生成看似正确的错代码 | 指针替代副本 + CI/hook 校验 + 定期审计 |
 | 活文档依赖被 gitignore 的路径 | 换机/克隆后规则失效 | 持久内容必须入库（见 flutter_bloc_app 先例） |
 | 规则只写不验证 | 规则形同虚设 | 能机械检查的写成 CI/pre-commit |

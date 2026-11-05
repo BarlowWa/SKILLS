@@ -15,7 +15,7 @@ description: 设计或审查 AI agent 的项目文档组织——CLAUDE.md / AGE
 
 1. **注意力预算**：上下文是有限资源，规则越多越容易被整体忽略（500 条指令下最强模型
    准确率约 68%，且偏向靠前指令）。目标是 "smallest possible set of high-signal tokens"。
-2. **剔除判据**：*"Would removing this cause Claude to make mistakes? If not, cut it."*
+2. **剔除判据**（内部实践总结，非官方原文）：*"Would removing this cause Claude to make mistakes? If not, cut it."* 拿不准就先删，agent 真犯错再加回。
 3. **无矛盾**：两条指令冲突时，模型可能任选一条 → 行为不稳定。写规则前先检索是否已有相反规定。
 4. **确定性优于劝告**：CLAUDE.md 里的规则是 advisory；必须每次都发生的事放 **hook / CI**。
 5. **指针优于副本**：引用 `file:line` 或文档路径，不要复制代码/规格——副本必然漂移。
@@ -25,13 +25,25 @@ description: 设计或审查 AI agent 的项目文档组织——CLAUDE.md / AGE
 | 知识类型 | 载体 | 加载时机 | 判据 |
 |---|---|---|---|
 | 每次都适用的硬规则、构建/测试命令、架构地图 | 根 `CLAUDE.md`（或 `AGENTS.md`） | 每会话全文 | 删掉它 agent 会犯错 |
-| 只与某目录/某类文件相关的约束 | 嵌套 `CLAUDE.md` / `.claude/rules/*.md`（带 `paths:`） | **命中该路径才加载**（嵌套文件在首次读写该目录时载入） | 放根文件会污染无关任务 |
+| 只与某目录相关的约束 | 嵌套 `CLAUDE.md` | 按需：首次读/写/编辑该目录内文件时载入 | 放根文件会污染无关任务 |
+| 只与某类文件相关的约束（如某扩展名） | `.claude/rules/*.md`（带 `paths:`） | 按需：对匹配文件 Read/Write/Edit 时载入；无 `paths` 的规则 launch 即载 | 跨多个目录、按文件类型生效 |
 | 多步 playbook、参考文档、固定流程 | skill（`SKILL.md` + `references/`） | 启动只载 name+description，正文按需 | 同一流程第三次粘贴 |
+| 打包分发给团队 | plugin / managed settings（分发层） | 封装下层的 skill / subagent / hook | 要跨仓库复用同一套设置 |
 | 深搜、并行、会污染主上下文的调查 | subagent | 独立窗口，只回摘要 | 主上下文装不下或需隔离 |
 | 绝不能发生的动作 | hook / permissions / CI | 事件触发，零常驻 | 违反一次就是事故 |
+| 全局行为/人格调整 | output styles / `--append-system-prompt` | 输出风格每会话进 system prompt、不被 compact；append 仅本次调用追加、不持久 | 要改「怎么回答」；output style 遵从度最高、须节制 |
 | 一次性过程记录、审计原始材料 | `.claude/plans/` 等本地目录 | 不加载 | 时点信息，可丢弃 |
 | 已定夺的方案与理由 | `docs/decisions/`（ADR） | 按需读 | 日后会被重提「为什么不用 X」 |
 | 面向人的用法与指南 | `docs/` / README | 按需读 | 人也读，agent 也可检索 |
+
+**关于 `paths:` 的两个坑**：① 带 `paths:` 的规则按需载入（匹配文件被 Read/Write/Edit 时），
+不带 `paths:` 的 `.claude/rules/` 却在 launch 即载入——别混为一谈。② v2.1.211 的变更点是
+「按需载入的规则不再绕过 `--setting-sources` 排除 project 设置」，**不是**「路径规则改成
+launch 加载」。历史 issue（#62049 / #90004 / #93248）与证据见
+`references/research-2026-10.md`；其中「新建文件不触发」（#93248）是**特性请求**而非已确认缺陷。
+
+**分流建议**：即使路径规则可靠，按扩展名/语言分流也宜用 SKILL.md 正文的**显式路由表**
+（「扩展名 → references 文件」），由模型显式 Read——路由表可读、可测、不依赖触发机制。
 
 ## 常驻文件该写什么
 
@@ -59,8 +71,11 @@ repo/
 ├── tools/<module>/CLAUDE.md  # 只写该目录的差异，不复制根规则
 └── .claude/                  # 本地、可丢
     ├── plans/                # 一次性计划与过程记录
-    └── settings.json         # hooks
+    └── settings.json         # hooks / permissions / env（改走 update-config skill）
 ```
+
+**改 `settings.json`（hooks / permissions / env）优先走 `update-config` skill**，不要手工
+编辑——本机全局配置由 cc-switch 托管，手工改会被覆盖。
 
 跨工具共用一个源文件时：根文件用 `AGENTS.md`，`CLAUDE.md` 只留 `@AGENTS.md`
 （不要维护两份；Windows 上 symlink 需管理员权限，import 更稳）。
@@ -82,15 +97,9 @@ repo/
 
 ## 常见失败模式
 
-| 失败模式 | 后果 | 规避 |
-|---|---|---|
-| 根文件 500+ 行 | 规则整体被忽略 | 按路径拆分；注意 import 不省 token |
-| 规则互相矛盾 | 模型任选一条 | 定期审阅 / prompt-audit |
-| 变更日志混入常驻 | 每会话付费 + 稀释注意力 | 历史进 plans 或 docs/changes |
-| 多份指令文件复制 | 漂移、互相矛盾 | `@AGENTS.md` 单一真源 |
-| 规格与代码脱节 | agent 按旧规格生成看似正确的错代码 | 指针替代副本 + CI 校验 + 定期审计 |
-| 活文档依赖 gitignore 路径 | 换机后规则消失 | 持久内容必须入库 |
-| `/init` 自动生成后不维护 | 低信号内容长期驻留 | 手写并逐行审阅 |
+低信号内容膨胀、规则互相矛盾、变更日志混入常驻、多份副本漂移、规格与代码脱节、
+活文档依赖 gitignore 路径、`/init` 生成后不维护——完整对照表与规避方式见
+`references/research-2026-10.md`「七、失败模式与规避」（单一真源，不在此重复）。
 
 ## 输出时
 

@@ -1,5 +1,7 @@
 # 跨 skill 严重级别映射
 
+> **已内联：映射表已移入 `references/blocking-criteria.md` 的「与其他 skill 的级别换算」一节**——`plan-review` 审查子 agent 只加载 `review-dimensions.md` 与 `blocking-criteria.md` 两个 reference，不再加载本文件。**本文件保留作独立核检工具**：下面的核对命令用于验证映射表未随他 skill 改版而过期；表内容如与 `blocking-criteria.md` 不一致，以 `blocking-criteria.md` 为准并**两处同步**。
+
 仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ 与 Rust 有专属语言规则文件，Java / Python 按各技能降级路径）。本文件是**外部快照**——他 skill 的级别口径变更时须同步本表（下方附有核对命令）。
 
 ---

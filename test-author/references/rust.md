@@ -51,7 +51,7 @@
 - `catch_unwind` 仅在需要检查 panic **负载**或测试必须继续执行时使用；普通错误路径不要用 panic 模拟。
 - Drop 中 panic 与展开中的 panic 叠加会 **abort**，不能在同一进程内当普通用例验证；析构契约默认「不 panic」。
 - 稳定 Cargo 下测试会忽略 profile 的 `panic` 设置（官方文档：Cargo Profiles — panic），不能靠 `panic = "abort"` 改变测试行为；若启用不稳定的 `panic-abort-tests` 或自定义 harness，须先确认构建配置。
-- `debug_assert!` 与整数溢出 panic 只在 debug 生效；不要用「release 下回绕」的测试替代显式 `checked_*` / `saturating_*` 的断言。
+- `debug_assert!` 与整数溢出 panic 在**默认 `cargo test`（test profile 继承 dev）下生效**——实测（cargo 1.99.1）默认 `cargo test` 下 `debug_assert!(false)` 触发 panic、`250u8 + 10u8` 触发 overflow panic；只有 `cargo test --release` 或显式设 `[profile.test] debug-assertions = false` / `overflow-checks = false` 后才失效（编译掉 / 回绕）。不要写成「只在 debug 生效」——默认跑测试时它确实生效；依赖它的用例须**标注所用 profile**。不要用「release 下回绕」的测试替代显式 `checked_*` / `saturating_*` 的断言。
 
 ## CONC-001 细化：异步与线程
 
