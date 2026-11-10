@@ -21,6 +21,20 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 
 本技能没有对应规则条文的缺陷，不要硬套规则 ID 上报；需要正确性审查时，提示用户另行运行 `code-review`。
 
+**快速路径**：提交范围只含**一个**审查类别、且只服务**一个**逻辑意图（即无需 COMMIT-005 拆分）、不含敏感文件与大文件、
+暂存区没有与提交范围无关的内容时，可省去下列细则——它们只在多类别、多意图拆分、amend 或出现 blocker 时才需要：
+
+- 「拆分提交」流程与 COMMIT-005 的顺序核对（`references/commit-order.md`）；「提交执行」的三条主命令照用，
+  **其后的提交后核对与失败处理仍必须做**：`git show --stat` / `git log -1 --format=%B`（见 `references/git-commands.md` §3），
+  且 `git commit` 非零退出时不得报告成功；
+- 仅当类别为**文档或构建配置脚本**（单一规则来源）时，才可省去「跨技能级别换算与去重」；
+  代码类提交仍须用它合并 code-rules / test-review / arch-review 等多技能结论。
+
+步骤 1–5、7、8 照常执行（**步骤 4 的分类派发审查照常**，只是可选跳过上面两项细则）；步骤 6 的 blocker 复审
+只在出现 blocker 时触发，届时已改走完整流程。审查输出格式中
+「提交顺序核对」一行照填：不涉及「测试 + 修复」拆分时写「不适用」。一旦出现已核实 blocker、类别混合、
+多个不相关意图、敏感或大文件、暂存区含范围外内容，或需要 amend，立即改走完整流程。
+
 ## 工作流程
 
 1. **检查状态**：运行 `git status`、`git diff --stat`、`git diff HEAD --check`（无 HEAD 时用 `git diff --cached --check`），了解变更概览并检查空白错误
@@ -57,10 +71,10 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 3. **生成提交信息**：基于变更内容，按 Conventional Commits 规范生成中文摘要
 4. **分类派发审查**：识别变更类别，仅对存在的类别派发独立 agent。类别**全覆盖**——每个变更文件必须落入下列三类之一，或明确落入「显式豁免」类并写明原因，不允许出现「既不是代码也不是文档」的静默落空：
    - **代码文件**（按 `code-rules` 语言路由表判定扩展名：C++ `.h/.hpp/.cpp/.cc/.cxx/.hh/.hxx/.ipp/.inl/.tpp/.cppm`、Rust `.rs`、Java `.java`、Python `.py/.pyi`；测试与基准文件；数据库脚本 `.sql`；以及**其它编程语言的源码文件**——Go `.go`、JavaScript/TypeScript `.js/.jsx/.ts/.tsx/.mjs/.cjs`、Ruby `.rb`、Kotlin `.kt/.kts`、C# `.cs`、Swift `.swift`、C `.c`、PHP `.php`、Scala `.scala`、Lua `.lua` 等，判据是「该扩展名是某种编程语言的源码」）→ 代码审查 agent。对 `code-rules` 语言路由表**无专属规则文件**的语言，代码审查 agent 仅应用 G-xxx 基线，并在报告中标注「未加载语言专属规则：<lang>」（与 `code-rules` 的既有降级口径一致）
-   - **构建 / 配置 / 脚本文件**（shell/PowerShell/Batch 脚本 `.sh/.bash/.zsh/.ps1/.bat/.cmd`；CI 配置 `.github/workflows/*`、`.gitlab-ci.yml`、`Jenkinsfile`、`.circleci/*`、`azure-pipelines.yml`；构建文件 `Makefile`/`*.mk`、`Dockerfile`/`Containerfile`、`CMakeLists.txt`/`*.cmake`、`Cargo.toml`、`pom.xml`/`*.xml`、`build.gradle*`、`package.json`、`pyproject.toml`、`setup.py`、`go.mod`；配置 `.gitignore`/`.gitattributes`/`.dockerignore`、`.yml/.yaml/.toml/.ini/.conf/.properties/.json/.jsonc`、`.env.example`）→ 构建 / 配置 / 脚本审查 agent（审查要点见 `references/doc-review.md` §9；**不走代码审查**，因为 code-rules 的语言规则不覆盖这些格式，也不走文档审查，因为其约束是可执行行为而非自然语言陈述）
+   - **构建 / 配置 / 脚本文件**（shell/PowerShell/Batch 脚本 `.sh/.bash/.zsh/.ps1/.bat/.cmd`；CI 配置 `.github/workflows/*`、`.gitlab-ci.yml`、`Jenkinsfile`、`.circleci/*`、`azure-pipelines.yml`；构建文件 `Makefile`/`*.mk`、`Dockerfile`/`Containerfile`、`CMakeLists.txt`/`*.cmake`、`Cargo.toml`、`pom.xml`/`*.xml`、`build.gradle*`、`package.json`、`pyproject.toml`、`setup.py`、`go.mod`；配置 `.gitignore`/`.gitattributes`/`.dockerignore`、`.yml/.yaml/.toml/.ini/.conf/.properties/.json/.jsonc`、`.env.example`）→ 构建 / 配置 / 脚本审查 agent（审查要点见 `references/build-review.md`；**不走代码审查**，因为 code-rules 的语言规则不覆盖这些格式，也不走文档审查，因为其约束是可执行行为而非自然语言陈述）
    > **本类只收**上述 shell / CI / 构建 / 配置 格式，**不再兜底任意文本文件**：编程语言源码一律归代码类（含路由表无规则文件的 Go/JS/TS/Ruby/Kotlin 等）；lockfile 归下方「显式豁免」类；未识别的非源码文本（如无扩展名说明文件、数据样本）按文档类或显式豁免处理并写明原因，不得静默落空
    - **文档文件**（.md/.mdx/.rst/.adoc/.txt 等自然语言文档；生成物、二进制等边界按 `references/doc-review.md` §1 处理）→ 文档审查 agent
-   - **不做专项审查的类别（显式豁免，非静默落空）**：lockfile（`package-lock.json`、`yarn.lock`、`pnpm-lock.yaml`、`Cargo.lock`、`poetry.lock`、`uv.lock`、`go.sum` 等，**优先于上面的 `.json` 匹配**）与生成物——原因：由包管理器或生成器产出，逐行审阅无意义且会淹没真正变更；风险由「lockfile 变更缺少对应声明变更」与「生成物源文件未改却被改动」两条 warning 信号兜底（见 `references/doc-review.md` §9.3）。`vendor/`、`build/`、`node_modules/` 等被忽略目录不进入提交范围，同样不审。
+   - **不做专项审查的类别（显式豁免，非静默落空）**：lockfile（`package-lock.json`、`yarn.lock`、`pnpm-lock.yaml`、`Cargo.lock`、`poetry.lock`、`uv.lock`、`go.sum` 等，**优先于上面的 `.json` 匹配**）与生成物——原因：由包管理器或生成器产出，逐行审阅无意义且会淹没真正变更；风险由「lockfile 变更缺少对应声明变更」与「生成物源文件未改却被改动」两条 warning 信号兜底（见 `references/build-review.md` §3）。`vendor/`、`build/`、`node_modules/` 等被忽略目录不进入提交范围，同样不审。
    - 多个类别都有时，**在同一条消息中并行派发**，agent 之间互不等待；主 agent 等全部返回（或失败降级）后，再进入步骤 5
    - 均无时跳过专项审查，并在确认页注明「本次变更无代码 / 构建配置 / 文档文件，未做专项审查」
    - 审查范围必须与最终提交范围一致；若用户限定只提交部分文件，只审这些文件
@@ -129,7 +143,7 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
       提交范围：<文件列表；全量则写「全部变更」>
    2. 筛选本类文件（清单见主 skill 步骤 4 的「构建 / 配置 / 脚本文件」一行）。若主 agent 指定了提交范围，
       只审查该范围内的文件；筛选出的未跟踪文件需 Read 全文后再审查
-   3. 读取审查指南：`<本 skill 目录>/references/doc-review.md` §9，按 §9.1 检查清单**逐行逐项**核对
+   3. 读取审查指南：`<本 skill 目录>/references/build-review.md`，按 §1 检查清单**逐行逐项**核对
       （清单按类别分组，不要求只看某一类；命中哪类就按哪类的判据与级别定级）
    4. 如果没有本类文件变更，直接报告「无构建 / 配置 / 脚本变更，跳过审查」后结束
    5. 输出：每条 blocker 必须附 `文件:行`、问题原文、反证（命令输出 / 文件位置）；给不出证据的降为 warning
@@ -183,28 +197,24 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 
 ## 跨技能级别换算与去重
 
-代码审查 agent 会同时加载 `code-rules`、`test-review`、`test-author`、`arch-review`、`db-rules`，这些技能的
-严重级别口径并不统一（`arch-review` 三级、其余两级），**不能直接混排**。换算口径与
-`plan-review/references/blocking-criteria.md` 的「与其他 skill 的级别换算」一节一致（`plan-review` 的
-`plan-review/references/severity-mapping.md` 仅保留为独立核检工具，映射表已内联进 blocking-criteria），并结合本技能
-「blocker = 不得提交」的语义做如下规定：
+代码审查 agent 会同时加载 `code-rules`、`test-review`、`test-author`、`arch-review`、`db-rules`，其级别口径不统一
+（`arch-review` 三级、其余两级），**不能直接混排**。换算口径与 `plan-review/references/blocking-criteria.md`
+「与其他 skill 的级别换算」一致；`severity-mapping.md` 只作为独立的核对工具保留。
 
 | 来源技能 | 原级别 | 本技能级别 | 理由 |
 |---|---|---|---|
-| `arch-review` | critical | **blocker** | 两边的最高级语义一致（结构性缺陷 / 不得提交） |
-| `arch-review` | major | **warning** | **`major` 是「应修复」而不阻塞**，本技能 `blocker` 是「不得提交」，两者语义不同——不得因数值上的「最高一级」而对齐为 blocker |
+| `arch-review` | critical | **blocker** | 两边最高级语义一致（结构性缺陷 / 不得提交） |
+| `arch-review` | major | **warning** | `major` 是「应修复」而非「不得提交」，不因数值最高而对齐为 blocker |
 | `arch-review` | minor | warning | 优化建议，仅记录 |
 | `code-rules` / `test-review` / `test-author` / `db-rules` | blocker | **blocker** | 两边均为「违规内容不得提交」 |
 | `code-rules` / `test-review` / `test-author` / `db-rules` | warning | warning | 两边均为不阻塞建议 |
 
-- 本技能不设置 `minor` 级：上述所有 warning 统一按本技能 `warning` 处理，只在报告中注明原级别，不另行细分。
-- **同一问题被两个及以上技能报出时只报一次**：合并为一条，**取更严者**（blocker > warning），并在报告中
-  注明「来源技能 / 原名 ID / 原级别」，例如 `来源：arch-review ARCH-001 (critical) + code-rules G-RELEASE (blocker)`。
-  合并后的条目按**输出级别**进入 blocker / warning 段，不再重复列出。
-- 级别换算只做**降为「来源技能原级别」的映射**，不新增来源技能未报的结论；主 agent 在步骤 5 的核实可继续降级
-  （只降不升）。本表与 `arch-review` 存在一处有意差异：`arch-review` 的 `major` 在本技能落 **warning**（而非 `minor`），
-  因为本技能没有 `minor` 级，且其唯一「仅记录」级就是 warning；去重时仍**取更严者**，不会因这一差异放过真 blocker。
-- 他技能级别口径变更时，本表须同步 `plan-review/references/severity-mapping.md` 的附录核对命令（本技能只读引用，不改该文件）。
+- 本技能不设 `minor` 级：来源 `minor` / `warning` 统一记 warning，只在报告中注明原级别。这是与
+  `plan-review`（两级 skill 的 warning 落 `minor`）有意不同的地方——本技能没有 `minor`，去重时仍取更严者。
+- **去重**：同一问题被多个技能命中只报一次，取更严者（blocker > warning），注明「来源技能 / 原名 ID / 原级别」，
+  例如 `来源：arch-review ARCH-001 (critical) + code-rules G-RELEASE (blocker)`。
+- 换算只做映射，不新增来源技能未报的结论；步骤 5 核实可继续降级（**只降不升**）。
+  他技能级别口径变更时同步本表（对照 `plan-review/references/severity-mapping.md` 的核对命令；本技能只读不改该文件）。
 
 ## 提交信息规范
 
@@ -246,51 +256,7 @@ BREAKING CHANGE: <破坏性说明>
 - **COMMIT-003**：若确需正文，正文每行不超过 72 字符，与标题之间空一行
 - **COMMIT-004**：若变更为新功能且有相关的 issue/ticket 编号，且用户要求引用时，在 footer 引用（如 `Closes #123` / `Refs #456`，footer 与标题之间空一行；有正文时则与正文之间空一行）
 - **COMMIT-005**：一次提交应围绕单一逻辑意图，避免把不相关的变更混入同一提交。检测到变更文件/内容服务于多个不相关逻辑意图时，应主动建议拆分为多个 commit 并分别生成提交信息；若同一批变更同时包含「新增/修改测试」与「修复生产代码」，必须拆成两个提交且测试提交在前（项目或运行环境有更具体约定时，以项目约定为准）。测试提交允许预期的红灯（红灯用例先提交），修复提交完成后必须全绿；确认页应区分「预期红」与「失败」。
-  - **顺序必须可核对**：测试提交在前不能只靠自述，须在修复提交完成后用下列命令证明「测试文件的首次提交是修复提交的祖先」：
-
-    ```bash
-    TEST_FILE=<测试文件>               # 本次提交涉及、对应源文件修复的测试文件
-    SRC_FILE=<源文件>                  # 被该测试覆盖、发生修复的源文件
-    FIX_COMMIT=<修复提交>              # 用户确认的修复组提交；只提交测试组、修复尚未提交时留空
-    TEST_FIRST=$(git log --diff-filter=A --format=%H -- "$TEST_FILE" | tail -1)   # 测试文件首次加入的提交
-
-    # 证据留存：先于任何分支打印，保证每条路径都能看到两者的提交顺序与时间
-    echo "--- 证据：$TEST_FILE / $SRC_FILE 的提交历史（测试文件在前）---"
-    git log --format='%h %ad %s' --date=short -- "$TEST_FILE" "$SRC_FILE"
-    echo "TEST_FIRST=${TEST_FIRST:-<空>}  FIX_COMMIT=${FIX_COMMIT:-<空>}"
-
-    if [ -z "$TEST_FIRST" ]; then
-      echo "不适用：测试文件不在本次提交范围"
-      exit 0
-    fi
-    if [ -z "$FIX_COMMIT" ]; then
-      echo "尚未闭合：修复提交待完成"
-      exit 0
-    fi
-    if [ -z "$(git show --format= --name-only "$FIX_COMMIT" -- "$SRC_FILE")" ]; then
-      echo "输入错误：FIX_COMMIT 未改动指定源文件，未产出顺序结论"
-      exit 2
-    fi
-    if [ -n "$(git show --format= --name-only "$FIX_COMMIT" -- "$TEST_FILE")" ]; then
-      echo "顺序未证明：测试与修复在同一提交"
-      exit 2
-    elif git merge-base --is-ancestor "$TEST_FIRST" "$FIX_COMMIT"; then
-      echo "顺序正确"
-      exit 0
-    else
-      echo "顺序错误：测试提交不在修复之前"
-      exit 1
-    fi
-    ```
-
-    判定规则（与脚本输出的五条分支一一对应，退出码 `0` 不阻断、`1` 顺序错误须阻止、`2` 需用户处理：顺序未证明或输入错误）：
-    - `TEST_FIRST` 为空（测试文件不在本次提交范围）→ 「不适用：测试文件不在本次提交范围」，退出码 0，**不阻断**；
-    - `FIX_COMMIT` 为空（只提交测试组，修复尚未提交）→ 「尚未闭合：修复提交待完成」，退出码 0，**不阻断**；记录「顺序核对尚未闭合」，不得宣称已通过，修复组提交后再跑一次；
-    - **输入错误**（`git show --format= --name-only "$FIX_COMMIT" -- "$SRC_FILE"` 为空，即 `FIX_COMMIT` 未改动指定源文件——传入了无关提交或 `SRC_FILE` 写错）→ 「输入错误：FIX_COMMIT 未改动指定源文件，未产出顺序结论」，退出码 2，**不产出顺序结论**，由用户核对 `FIX_COMMIT` / `SRC_FILE` 后重跑；
-    - **修复提交本身改动了测试文件**（`git show --format= --name-only "$FIX_COMMIT" -- "$TEST_FILE"` 非空）→ 「顺序未证明：测试与修复在同一提交」，退出码 2，覆盖「新增测试与修复同一提交」与「已有测试与修复同批修改」两种形态；要求用户拆开提交或显式接受（记录理由）；
-    - 否则以 `git merge-base --is-ancestor` 退出码判定，0 为「顺序正确」（退出码 0），非 0 为「顺序错误」（退出码 1）；检出「顺序错误」时阻止继续。
-
-    为什么 `FIX_COMMIT` 要显式传入、而不从源文件历史推导：源文件在基线中已存在时，`git log -1 -- "$SRC_FILE"` 返回的是基线提交而非空，脚本便无法区分「修复尚未提交」与「修复早于测试」——这两种情形（场景 d / c）的源文件历史从哈希上看完全一样，只能靠「当前轮是否已产出修复组提交」来分辨。故 `FIX_COMMIT` 取修复组提交的哈希，只提交测试组时留空。**脚本内置输入守卫**：在 `FIX_COMMIT` 非空判断之后、同提交判断之前，先用 `git show --format= --name-only "$FIX_COMMIT" -- "$SRC_FILE"` 确认该提交确实改动了源文件；输出为空说明传入的不是修复提交（或 `SRC_FILE` 写错），脚本输出「输入错误」并以退出码 2 结束，**不产出顺序结论**，由用户核对输入后重跑。顺序要求只关心「测试的首次加入早于修复提交」，故不把修复跨多个提交的情形纳入本脚本。确认页须留「提交顺序核对」一行，写明命令与结论。
+  - **顺序必须可核对**：测试提交在前后不能只靠自述。修复组提交后用 `references/commit-order.md` 的脚本证明「测试文件的首次提交是修复提交的祖先」，按该文档 §2 的六个结果判定（退出码 `0` 不阻断 / `1` 顺序错误须阻止 / `2` 需用户处理）。确认页须留「提交顺序核对」一行，写明命令与结论。
 - **COMMIT-006**：禁止生成含 `fix bug`、`update code`、`修改了一下` 等无信息量的模糊描述
 - **COMMIT-007**：type 选择要准确——若变更属于多个 type，选择最主要的那一个
 - **COMMIT-008**：scope 可选但推荐填写，标注影响的模块/目录/文件
@@ -352,12 +318,12 @@ BREAKING CHANGE: 原字符串返回值改为 AuthResult 对象，调用方需同
 4. **运行验证**：本次是否运行测试/构建；命令与结果（通过 / 失败 / 预期红 / 未运行及原因）。
    代码变更且存在入口时默认必须运行；仅当用户明确要求或环境无法运行时才可「未运行」，并标注风险由用户确认；
    纯文档变更可豁免。测试先提交允许「预期红」，修复提交后必须全绿
-5. **提交顺序核对**：涉及「测试 + 修复」拆分时，展示 COMMIT-005 的命令、两个 commit hash 与结论（顺序正确 / 顺序错误 / 顺序未证明 / 输入错误 / 尚未闭合（修复待提交））；否则写「不适用」
+5. **提交顺序核对**：涉及「测试 + 修复」拆分时，展示 `references/commit-order.md` 的命令、两个 commit hash 与结论（顺序正确 / 顺序错误 / 顺序未证明 / 输入错误 / 尚未闭合（修复待提交）/ 不适用）；否则写「不适用」
 6. **确认提示**：询问用户是否确认提交；仍有已核实 blocker 时，确认页必须标注「需豁免才可提交」，并要求用户选择「修复」或「显式豁免」；复审已达 1 轮上限仍不通过时，标注「复审已达上限」，要求用户在「再次豁免」与「中止」之间选择
 
 ## 提交执行
 
-用户确认后，按确认的提交模式执行：
+用户确认后，按确认的提交模式执行（完整陷阱说明见 `references/git-commands.md` §1）：
 
 ```bash
 # 全量
@@ -403,13 +369,11 @@ git commit -m "<提交信息>" -- <路径...>
 1. 列出建议的提交分组（每组文件、意图、type/scope），**测试组排在修复组之前**，请用户确认；
 2. 按顺序对每组执行本流程：以「指定文件」模式确认该组范围 → 审查 → 用户确认 → 提交；
 3. 组间范围不得重叠；已提交的组不再改动，除非用户明确要求 amend。
-4. 各组提交后，按 COMMIT-005 的脚本核对顺序（`FIX_COMMIT` 传入修复组提交哈希），结论与脚本的五条分支一一对应：
-   - 只提交测试组（修复尚未提交，`FIX_COMMIT` 留空）→ 脚本输出「尚未闭合：修复提交待完成」（退出码 0，不阻断），记录该结论，不得宣称已通过；修复组提交后带上其哈希再跑一次闭合核对；
-   - 测试文件不在本次提交范围 → 脚本输出「不适用：测试文件不在本次提交范围」（退出码 0）；仅提交修复组且无对应测试时属此情形；
-   - `FIX_COMMIT` 未改动指定源文件（传入无关提交或 `SRC_FILE` 写错）→ 脚本输出「输入错误：FIX_COMMIT 未改动指定源文件，未产出顺序结论」（退出码 2），由用户核对输入后重跑，不产出顺序结论；
-   - 修复组本身改动了测试文件（新增测试与修复同一提交，或既有测试与修复同批修改）→ 脚本输出「顺序未证明：测试与修复在同一提交」（退出码 2），要求拆开或让用户显式接受并记录理由；
-   - 否则按 `git merge-base --is-ancestor <测试首提交> <修复提交>` 判定：退出码 0 为「顺序正确」，非 0 为「顺序错误」（退出码 1）并阻止继续；
-   - 核对结果写入确认页/报告的「提交顺序核对」一行：命令、两个 commit hash 与结论。
+4. 各组提交后，按 `references/commit-order.md` 的脚本核对顺序（`FIX_COMMIT` 传入修复组提交哈希），
+   结论取该文档 §2 的六个结果之一：**顺序正确 / 顺序错误 / 顺序未证明 / 输入错误 / 尚未闭合（修复待提交）/
+   不适用（无对应测试）**。其中「顺序错误」阻止继续；「尚未闭合」不得宣称已通过，修复组提交后带上其哈希再跑一次；
+   「输入错误」由用户核对 `FIX_COMMIT` / `SRC_FILE` 后重跑；「顺序未证明」要求拆开提交，或由用户**显式接受**并记录理由。
+   核对结果写入确认页/报告的「提交顺序核对」一行：命令、两个 commit hash 与结论。
 5. 拆分后的每组提交信息各自生成，不复用同一标题。
 
 ### 初始提交
@@ -433,7 +397,7 @@ git commit -m "<提交信息>" -- <路径...>
 派发失败或 agent 未返回有效报告时，**不得视为「无问题」通过**。应说明失败原因，由主 agent 按对应指南自查：
 代码侧按本次实际涉及的范围加载 code-rules + 对应语言 references + test-author/test-review + arch-review/db-rules，
 `code-rules` 路由表无专属规则文件的编程语言（Go / JS / TS / Ruby / Kotlin 等）仅应用 G-xxx 基线并标注「未加载语言专属规则：<lang>」；
-构建 / 配置 / 脚本侧按 `references/doc-review.md` §9 的检查清单；文档侧按 `references/doc-review.md`。
+构建 / 配置 / 脚本侧按 `references/build-review.md` 的检查清单；文档侧按 `references/doc-review.md`。
 并在报告中标注「审查降级：主 agent 自查」。多类别同时降级时，各自按对应指南核对，不得只查其中一类。
 
 ### 暂存区已有内容
@@ -458,25 +422,13 @@ git commit -m "<提交信息>" -- <路径...>
 
 ### Amend 提交
 
-若用户要求 amend（修正上一次提交），使用 `git commit --amend`。此时：
-- 先展示上一次提交信息
-- 展示本次新的变更
-- 审查范围应覆盖「上一次提交的内容 + 本次新增变更」，而不是只审本次 diff。`git commit --amend`
-  只提交索引，因此用 `git diff HEAD~1 --cached` 查看将进入 amend 的内容；无 `HEAD~1`（root 提交）时
-  用 `git diff --cached $(git hash-object -t tree /dev/null)`（或 `git show HEAD` + `git diff --cached`）。
-  工作区未暂存改动不会被 amend 纳入，不要混入审查范围。若上一次提交不在本会话内且无法完整获取，先向用户确认范围
-- 生成修正后的提交信息供用户确认
-- 提示：**不得 amend 已 push 的提交**
-- 只加内容、保留原提交信息：`git commit --amend --no-edit`（会提交整个索引；若只想加入指定路径，
-  用 `git commit --amend --only --no-edit -- <路径...>` 或先整理索引）
-- 只改提交信息：优先 `git commit --amend --only -m "<新提交信息>"`（不改索引中的其它暂存内容）；
-  若索引与 HEAD 一致，也可用普通 `git commit --amend -m "<新提交信息>"`（执行前可用 `git diff --cached --quiet` 判断）
-- 两者都有：`git commit --amend --only -m "<新提交信息>" -- <路径...>`（只纳入指定路径，保留其它暂存内容）；
-  若索引中只有目标内容，也可用普通 `git commit --amend -m "<新提交信息>"`
-- 注意：裸 `--amend -m` 会提交整个索引；索引与 HEAD 不一致时，已暂存改动会一同进入 amend，优先用 `--only`
-- **所有选项必须写在 `--` 之前**：`--` 之后一律按 pathspec 解析，`git commit --amend --only -- <路径...> --no-edit`
-  会把 `--no-edit` 当成文件名并报 `error: pathspec '--no-edit' did not match any file(s) known to git`（退出码 1）。
-  正确形态：`git commit --amend --only --no-edit -- <路径...>`、`git commit --amend --only -m "<信息>" -- <路径...>`
+若用户要求 amend（修正上一次提交），命令形态见 `references/git-commands.md` §2。必守三条：
+
+- 审查范围是「上一次提交的内容 + 本次新增变更」，不是只审本次 diff（`git diff HEAD~1 --cached`；root 提交另按该文档处理）；
+  工作区未暂存改动不会被 amend 纳入，不要混入。
+- **不得 amend 已 push 的提交**。
+- 裸 `--amend -m` 会提交整个索引；优先用 `--only`。且**所有选项必须写在 `--` 之前**
+  （`--` 之后一律按 pathspec 解析，`--no-edit` 写在 `--` 后会被当成文件名而报错）。
 
 ## 审查输出格式
 
@@ -504,7 +456,7 @@ git commit -m "<提交信息>" -- <路径...>
 ### 构建 / 配置 / 脚本审查
 **审查范围**：N 个文件（shell 脚本 / CI 配置 / 构建文件 / 配置）
 **检查项**：shell 错误处理与引号、危险命令、G-SECRET / G-CMDINJ、CI 密钥与权限、依赖可复现性、硬编码路径
-- [blocker] `path:line` — <问题>；检查项：<shell-EF / shell-quote / shell-danger / shell-secret / shell-inject / ci-secret / ci-perm / ci-trigger / build-repro / build-path / config-semantics …（编号定义见 doc-review.md §9.1）>；违规片段：「…」；反证：<命令输出 / 文件:行>（已核实）
+- [blocker] `path:line` — <问题>；检查项：<shell-EF / shell-quote / shell-danger / shell-secret / shell-inject / ci-secret / ci-perm / ci-trigger / build-repro / build-path / config-semantics …（编号定义见 build-review.md §1）>；违规片段：「…」；反证：<命令输出 / 文件:行>（已核实）
 - [warning] `path:line` — <建议>；证据：<…>
 - 无构建 / 配置 / 脚本变更 / 无 blocker
 （lockfile 与生成物按「不做专项审查」处理时，在此写一行「已豁免：<文件>——原因：包管理器/生成器产出」，不得静默省略）
@@ -529,7 +481,7 @@ git commit -m "<提交信息>" -- <路径...>
 
 ### 提交顺序核对（测试与修复同批时必填）
 - 测试文件：<路径>；测试首提交：<hash>；源文件：<路径>；修复提交：<hash>
-- 命令：COMMIT-005 脚本（`FIX_COMMIT=<修复组哈希>`）→ 输出「<顺序正确 / 顺序错误 / 顺序未证明 / 输入错误 / 尚未闭合 / 不适用>」、退出码 <0 / 1 / 2>；结论：<对应文字>
+- 命令：`references/commit-order.md` 脚本（`FIX_COMMIT=<修复组哈希>`）→ 输出「<顺序正确 / 顺序错误 / 顺序未证明 / 输入错误 / 尚未闭合 / 不适用>」、退出码 <0 / 1 / 2>；结论：<对应文字>
 - 不涉及「测试 + 修复」拆分时写「不适用」
 
 ### 提交信息约定冲突（如适用）
