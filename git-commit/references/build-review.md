@@ -3,7 +3,18 @@
 供 git-commit 派发的**构建 / 配置 / 脚本审查 agent** 使用（与 `doc-review.md` 的文档审查并列，
 不是文档审查的一部分）。
 
-审查对象：shell 脚本、CI 配置、构建文件与项目配置文件（范围见 SKILL.md 步骤 4 的「构建 / 配置 / 脚本文件」一行）。
+## 0. 审查对象
+
+纳入：shell/PowerShell/Batch 脚本（`.sh` `.bash` `.zsh` `.ps1` `.bat` `.cmd`）；CI 配置（`.github/workflows/*`、
+`.gitlab-ci.yml`、`Jenkinsfile`、`.circleci/*`、`azure-pipelines.yml`）；构建文件（`Makefile`/`*.mk`、
+`Dockerfile`/`Containerfile`、`CMakeLists.txt`/`*.cmake`、`Cargo.toml`、`pom.xml`/`*.xml`、`build.gradle*`、
+`package.json`、`pyproject.toml`、`setup.py`、`go.mod`）；项目配置（`.gitignore`/`.gitattributes`/`.dockerignore`、
+`.yml` `.yaml` `.toml` `.ini` `.conf` `.properties` `.json` `.jsonc`、`.env.example`）。
+
+不纳入：lockfile（见 §3，**优先于 `.json` 匹配**）、生成物（见 §3）、被忽略目录（`vendor/` `build/`
+`node_modules/` `dist/`）。编程语言的源码文件（含 C/C++/Rust/Java/Python 以及 Go/JS/TS/Ruby/Kotlin 等）
+一律归代码审查，**不在本类兜底**；未识别的非源码文本按文档审查或显式豁免处理。
+
 这些文件的约束是**可执行行为与安全风险**，不是自然语言陈述；因此不走文档审查的完整性/一致性口径
 （那是 `doc-review.md` §1–§8），也不走 code-rules 的语言规则（那些规则面向 C++/Rust/Java/Python 源码，
 不覆盖 YAML/TOML/Makefile 语法）。两者判据互不通用，不得混用。
