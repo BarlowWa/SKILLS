@@ -54,7 +54,7 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 
 ### 2. 循环依赖
 
-- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）默认判 critical——危害不随环长递减，更长的环更难发现、更难拆解。**判级以语言参考为准**：语言参考为该语言形态单列了分级时（如 Rust 的 crate 级 / dev-dependency 环与模块级环见 `references/rust.md` ARCH-RS-004），按语言参考执行，本条不复报；语言参考未覆盖该语言时按本条的 critical。
+- **ARCH-004**：模块间禁止循环引用。任意长度的模块环（A→B→A、A→B→C→A）默认判 critical——危害不随环长递减，更长的环更难发现、更难拆解。**判级以语言参考为准**：语言参考为该语言形态单列了分级时（如 Rust 的 crate 级 / dev-dependency 环与模块级环见 `references/rust.md` ARCH-RS-004；Java 模块口径降级为包口径时的包级环见 `references/java.md` ARCH-JAVA-011），按语言参考执行，本条不复报；语言参考未覆盖该语言时按本条的 critical。
 - **ARCH-005**：循环依赖落在**声明/接口边界**（如头文件或模块接口互相包含）时，属于 major；用前向声明、接口抽取或分层打破，见语言参考。
 - **ARCH-006**：允许同一模块内的类型相互引用；但同一模块内 3 个以上类型形成引用环时，升级为 major。
 
@@ -105,9 +105,12 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | ARCH-020…023 API/ABI 兼容性 | `references/cpp.md` | ✅ |
 | Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
 | ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
-| Java / Python 证据与规则 | `references/<lang>.md` | ⏳ 首次真实项目时创建 |
+| Java 依赖图 / 证据与规则 | `references/java.md` | ✅ 已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 路径按官方文档核对） |
+| ARCH-JAVA-001…011 | `references/java.md` | ✅ 已就绪（同上；Gradle 未在样本上实测。ARCH-JAVA-003 因样本为单模块而不适用，ARCH-JAVA-007 因样本未用 shade 插件而不适用） |
+| Python 证据与规则 | `references/python.md` | ⏳ 首次真实项目时创建 |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。
+> Java 的 `pom.xml` 与 `build.gradle` 并存时，按模块分别判定并注明以哪个构建文件为准（SKILL.md『工作流程』第 1 步）。
 
 ---
 
@@ -170,4 +173,5 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
   - 平台隔离：`code-rules`（C++：cpp.md）PLAT-001 管"OS 专有 API 隔离"，本技能 ARCH-003 管"第三方库适配层隔离"；
   - 第三方封装：`code-rules`（C++：cpp.md）PLAT-003 管"第三方原生句柄/指针必须二次封装"，本技能 ARCH-003 管"模块级适配层与依赖方向"。
   - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法（含 `unsafe impl Send/Sync` 的 SAFETY 论证 = RUST-UNSAFE-005、`unsafe extern` 与 FFI 边界写法），本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；对外发布面的 API 契约（SemVer、`#[non_exhaustive]` / sealed 的**发布策略**）归 ARCH-RS-007，单类型如何写（何时加 `#[non_exhaustive]`、sealed 的实现方式）归 RUST-API-002，重叠处按 code-rules 报一次；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-RS-004 判定。
+  - Java：`code-rules/references/java.md` 管单文件内的资源、异常、集合、并发与安全写法（如 JAVA-SEC-005 原生反序列化禁令）；本技能 ARCH-JAVA-001…010 管依赖 scope 隔离、`requires transitive`、reactor 方向、依赖仲裁、构建产物导出面（multi-release jar / OSGi）与 JPMS 导出面，ARCH-JAVA-011 管模块口径降级为包口径时的包级环分级。`module-info.java` 与 `package-info.java` 在 code-rules 中豁免，其导出面与可见性形态只由本技能判定。测试依赖隔离（ARCH-JAVA-010）判的是 `main` 是否 import 测试库，测试代码质量归 `test-review`，不重复。
 - `test-author` / `test-review`：测试目录按『注意事项』放宽；测试设计归 `test-author`、测试质量审查归 `test-review`，本技能不审查测试代码。

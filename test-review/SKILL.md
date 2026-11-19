@@ -12,7 +12,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 - **测试路径**（按路由判定，与 `test-author` 路由表逐项对齐）：
   - **C++**：`*_test.cpp`、`*_unittest.*`、`tests/`、`test/`、`unittest/`（与 `test-author` 路由表一致；`.cc`/`.cxx` 源按项目惯例视同 `*_test.cpp`）
   - **Rust**：`tests/*.rs`、`src/**` 内 `#[cfg(test)]` 模块、`///` doctest（`#[cfg(test)]` 与 doctest 没有独立文件名，**必须**按源码标记扫描，不能只扫 `tests/` 目录）
-  - **Java**：`src/test/**`、`*Test.java`、`*IT.java`
+  - **Java**：`src/test/**`、`src/testFixtures/**`、`*Test.java`、`*Tests.java`、`*IT.java`
   - **Python**：`test_*.py`、`*_test.py`、`tests/`
   > **只有 `#[cfg(test)]` 单测、没有 `tests/` 目录的 Rust crate 是完整合法的测试布局**——按目录扫描会判成「无测试文件」并跳过全部审查，这是本技能最易漏的执行链盲区。`src/**` 必须按 `#[cfg(test)]` 标记纳入扫描。
 - **审查依据不限于测试源码**：EXEC 组还必须读**构建配置**与**运行产物**（注册清单、测试报告、CI 结果）。仅凭测试源码**无法**判断测试是否真被构建、注册、执行——这三类恰是"缺席类"缺陷，在源码里表现为"看起来没问题"。
@@ -24,7 +24,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | ---- | -------- | ---- |
 | C++ | `references/cpp.md`（gtest/Catch2/doctest、Death Test、CMake/CTest 证据、假阳性陷阱） | ✅ |
 | Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（cxx 1.0.205 实测；nextest 未装） |
-| Java | `references/java.md` | ⏳ |
+| Java | `references/java.md`（Surefire/Failsafe 默认 include 模式、surefire-reports XML、JUnit 5 跳过形态、Vintage 引擎缺失、Mockito 假绿） | ✅ 已就绪（jsoup 1.18.3 实测：全量 `mvn test` 1370 条 / 45 skipped；类级与方法级 `@Disabled` 的 XML message 实测，Assumptions abort 按文档——样本未使用 assume） |
 | Python | `references/python.md` | ⏳ |
 
 > **路由优先级**：先按扩展名/构建文件判定语言，再看是否属于测试路径。扩展名能唯一确定语言、但目录不在上表时（如仓库外置的 `add_test.rs`），仍按该语言处理，并在输出中注明判定依据——不得因路径未命中而静默降级或跳过。
@@ -173,7 +173,8 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | 执行证据的获取方式与假阳性陷阱 | C++ | `references/cpp.md` EXEC 证据 | ✅ |
 | 执行证据：cargo metadata / `--list` / doctest / nextest | Rust | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；nextest 未装） |
 | 跳过形态：`#[ignore]` / cfg / guard+return；`should_panic` / `debug_assert` 陷阱 | Rust | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测） |
-| 其他语言 | Java / Python | 首次真实项目时创建 | ⏳ |
+| 执行证据：Surefire/Failsafe 报告、默认 include 模式、跳过形态 | Java | `references/java.md` | ✅ 已就绪（jsoup 1.18.3 实测；Failsafe 与 Gradle 路径按官方文档核对） |
+| 其他语言 | Python | 首次真实项目时创建 | ⏳ |
 
 ---
 

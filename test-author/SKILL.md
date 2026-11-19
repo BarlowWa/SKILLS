@@ -20,7 +20,7 @@ description: 编写/设计 C++ / Rust / Java / Python 测试时使用。先做�
 | ---- | ----------------- | -------- | ---- |
 | C++ | `*_test.cpp`、`*_unittest.*`、`tests/`、`test/`、`unittest/` | `references/cpp.md` | ✅ |
 | Rust | `tests/*.rs`、`src/**` 内 `#[cfg(test)]`、`///` doctest | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测 + 26 条用例变异验证） |
-| Java | `src/test/**`、`*Test.java`、`*IT.java` | `references/java.md` | ⏳ |
+| Java | `src/test/**`、`src/testFixtures/**`、`*Test.java`、`*Tests.java`、`*IT.java` | `references/java.md` | ✅ 已就绪（JUnit 5 实测；Mockito / AssertJ 按文档） |
 | Python | `test_*.py`、`*_test.py`、`tests/` | `references/python.md` | ⏳ |
 
 > **路由优先级**：先按扩展名/构建文件判定语言，再看是否属于测试路径。扩展名能唯一确定语言、但目录不在上表时（如仓库外置的 `add_test.rs`），仍按该语言处理，并在输出中注明判定依据——不得因路径未命中而静默降级或跳过。
@@ -183,7 +183,7 @@ description: 编写/设计 C++ / Rust / Java / Python 测试时使用。先做�
 
 ## 与其他技能协同
 
-- `code-rules`：生产代码规范。测试代码不适用其规则；文中引用的语言规则 ID（C++ 的 SEC-A002、SEC-B001、CPLX-W004、THREAD-003/004/005 等）仅作设计导向，其他语言按其参考文件对应条目。
+- `code-rules`：生产代码规范。测试代码不适用其规则；文中引用的语言规则 ID（C++ 的 SEC-A002、SEC-B001、CPLX-W004、THREAD-003/004/005 等，Java 的 JAVA-COLL-*/JAVA-NUM-* 等）仅作设计导向，其他语言按其参考文件对应条目。
 - `test-review`：本技能产出的「契约表 + 用例矩阵 + 区分度表 + 未覆盖项 + 待确认契约项」是其核对输入，重点核对 CONTRACT/EXPECT/DIST 与 BVA/ECP/BRP 是否落地。`推测` 项与未覆盖项优先核对。
 - **接口职责过重信号**：有效等价类/维度 >15 个时优先建议重构，但**不豁免 ECP-004**——应同时把「维度过多」作为接口缺陷上报，并仍为拆分后的每个单元设计交叉用例。不得用"建议重构"跳过交叉覆盖。
 

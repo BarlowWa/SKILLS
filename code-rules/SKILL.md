@@ -23,7 +23,7 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | ---- | ------ | -------- | ---- |
 | C++ | `.h` `.hpp` `.cpp` `.cc` `.cxx` `.hh` `.hxx` `.ipp` `.inl` `.tpp` `.cppm` | `references/cpp.md` | ✅ 已就绪 |
 | Rust | `.rs` | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；CONC / no_std 未被该样本覆盖，按文档判） |
-| Java | `.java` | `references/java.md` | ⏳ 首次真实项目时创建 |
+| Java | `.java` | `references/java.md` | ✅ 已就绪（JDK 25 + jsoup 1.18.3 实测；多-release / `--release` / `Locale` / 集合 / 相等性等已校准） |
 | Python | `.py` `.pyi` | `references/python.md` | ⏳ 首次真实项目时创建 |
 
 > `.h` 也可能是 C 头文件：按项目语境判定；项目为纯 C 且已有 C 规则文件时按其执行，否则按 C++ 处理（`cpp.md` 的 C 互操作豁免适用）。
@@ -58,18 +58,18 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 
 同一缺陷同时命中 G 规则与语言文件同义条目时，**只报一次，以语言文件 ID 为准**；语言文件没有对应条目时才用 G ID。若语言文件条目级别低于 G，按**更严者**报级别。
 
-| G 规则 | C++ 对应 | Rust 对应 |
-| ------ | -------- | --------- |
-| G-MAGIC | MAGIC-001 | RUST-MAGIC-001 |
-| G-RELEASE | ERR-003 | RUST-OWN-003 |
-| G-COMPLEX-DUP | CPLX-W001 | （无对应，按 G-COMPLEX-DUP 报） |
-| G-COMPLEX-PARAM | CPLX-W002 | （无对应，按 G-COMPLEX-PARAM 报） |
-| G-COMPLEX-SRP | CPLX-W003 | （无对应，按 G-COMPLEX-SRP 报） |
-| G-COMPLEX-NEST | CPLX-W004 | （无对应，按 G-COMPLEX-NEST 报） |
-| G-LOG | LOG-W001 | RUST-LOG-W001 |
-| G-SECRET | SEC-C003 | RUST-SEC-003 |
-| G-CMDINJ | SEC-C002 | RUST-SEC-001 |
-| G-SWALLOW | （无对应，按 G-SWALLOW 报） | RUST-ERR-002 |
+| G 规则 | C++ 对应 | Rust 对应 | Java 对应 |
+| ------ | -------- | --------- | --------- |
+| G-MAGIC | MAGIC-001 | RUST-MAGIC-001 | JAVA-MAGIC-001 |
+| G-RELEASE | ERR-003 | RUST-OWN-003 | JAVA-RES-001 |
+| G-COMPLEX-DUP | CPLX-W001 | （无对应，按 G-COMPLEX-DUP 报） | （同上） |
+| G-COMPLEX-PARAM | CPLX-W002 | （无对应，按 G-COMPLEX-PARAM 报） | （同上） |
+| G-COMPLEX-SRP | CPLX-W003 | （无对应，按 G-COMPLEX-SRP 报） | （同上） |
+| G-COMPLEX-NEST | CPLX-W004 | （无对应，按 G-COMPLEX-NEST 报） | （同上） |
+| G-LOG | LOG-W001 | RUST-LOG-W001 | JAVA-LOG-W001 |
+| G-SECRET | SEC-C003 | RUST-SEC-003 | JAVA-SEC-001 |
+| G-CMDINJ | SEC-C002 | RUST-SEC-001 | JAVA-SEC-002 |
+| G-SWALLOW | （无对应，按 G-SWALLOW 报） | RUST-ERR-002 | JAVA-EXC-001 |
 
 ---
 
@@ -106,7 +106,7 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | Java | `src/test/`、`src/testFixtures/`、`*Test.java`、`*Tests.java`、`*IT.java` | 同上 |
 | Python | `tests/`、`test_*.py`、`*_test.py`、`conftest.py` | 同上 |
 | 全部 | SQL / DDL / migration（`.sql`）不在本技能范围 | `db-rules` |
-| 全部 | 模块依赖、分层、循环依赖、API/ABI 等架构级问题 | `arch-review`（C++ / Rust 证据已就绪；Java / Python 按其降级路径） |
+| 全部 | 模块依赖、分层、循环依赖、API/ABI 等架构级问题 | `arch-review`（C++ / Rust / Java 证据已就绪；Python 按其降级路径） |
 
 - 测试文件**豁免本技能全部规则**，由 `test-author`（设计）/ `test-review`（审查）负责；对应语言参考未就绪时，报告须写「未加载语言专属细化/执行证据：<lang>」，不得判为「通过」。
 - 基准文件同样豁免 code-rules：`test-author` 不适用；`test-review` **仅保留执行链判据**（必须真的被构建并注册）。
