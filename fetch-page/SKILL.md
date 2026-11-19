@@ -50,12 +50,41 @@ stderr 会给出提示，按提示对照：
 
 | 现象 | 原因 | 对策 |
 | ---- | ---- | ---- |
-| `正文几乎为空` | 页面靠 JS 渲染（SPA） | 用 `--raw` 看原始响应；内容确在 JS 里则此法抓不到，需改用浏览器/接口 |
-| `正文几乎为空` | 需要登录态 | 先 `--method POST --cookie-jar <file> --data "..." <login_url>` 登录，再带同一 jar 抓内页 |
-| `正文几乎为空` | 反爬拦截，返回验证页 | 检查 HTTP 状态码与 `--raw` 返回内容 |
+| `正文几乎为空` | 页面靠 JS 渲染（SPA） | 用 `--raw` 看原始响应；内容确在 JS 里则此法抓不到，改用 `chrome-bridge render`（见下节） |
+| `正文几乎为空` | 需要登录态 | 先 `--method POST --cookie-jar <file> --data "..." <login_url>` 登录，再带同一 jar 抓内页；扫码/短信登录用 `chrome-bridge login` |
+| `正文几乎为空` | 反爬拦截，返回验证页 | 检查 HTTP 状态码与 `--raw` 返回内容；Cloudflare 类用 `chrome-bridge render --headful`（**已有浏览器在跑时 `--headful` 被忽略、只会附着**，先 `chrome-bridge close`） |
 | 正文乱码 | 自动探测的字符集不对 | 加 `--encoding <字符集>`（如 `gb18030`）显式指定；可先 `--raw` 看字节、或用文件头/HTTP 头判断编码 |
 | `--raw` 输出乱码 | `--raw` 是**逐字节**输出，不做解码，终端按自身编码显示非 UTF-8 文本会乱 | 文本类目标加 `--encoding <字符集>`；真正的二进制（图片/压缩包）应重定向到文件而不是看终端 |
 | 内容被截断 | 超出 `--max-chars` | 调大 `--max-chars`；或用 `--selector` 缩小范围（**前提是已装 `cssselect`**，否则无效） |
+| 连接被重置 / `ERR_CONNECTION_RESET` | 网络层（墙 / 代理 / 企业策略）拦截 | 不是脚本问题。换网络或走代理。`chrome-bridge render` **只在拦截基于浏览器特征**（TLS 指纹、UA、JS 挑战）时有帮助；纯 TCP/IP 层的 reset 换浏览器同样被拦——判断不了就先 `chrome-bridge render` 试一次，仍 reset 即属网络层 |
+
+## 抓不到时：升级到 chrome-bridge
+
+**页面需要登录、是 JS 渲染的 SPA、或被人机验证/Cloudflare 拦住时，`fetch.py` 原理上就抓不到**——
+它不做 JS 执行、也不持浏览器身份。这时用配套的 **`chrome-bridge` skill**（`~/.claude/skills/chrome-bridge/scripts/chrome.py`）：
+
+```powershell
+$CB = "$HOME\.claude\skills\chrome-bridge\scripts\chrome.py"
+$FETCH = "$HOME\.claude\skills\fetch-page\scripts\fetch.py"
+
+# ① JS 渲染的页面 → 取渲染后正文（知道目标元素时加 --wait-for "#main" 最稳）
+python $CB render "https://www.example.com" -o out.md
+
+# ② 需要登录 → 登录闸门（把截图给用户扫），然后导出 cookie
+python $CB login "https://passport.example.com/login" --timeout 420 --shot login.png
+$h = python $CB cookies example.com --values
+
+# ③ 拿到 cookie 后回 fetch.py 接力（比每次开浏览器快一个数量级）
+python $FETCH --raw --header "Cookie: $h" "https://api.example.com/x"
+
+# ④ 记住优雅关闭，否则登录态可能丢
+python $CB close
+```
+
+> PowerShell 不展开 `~`，上面用 `$HOME` 拼路径；直接写 `~/.claude/...` 会被 python 当成字面量路径而报错。
+
+分工原则：**fetch.py 优先**，只有它原理上做不到时才开浏览器；拿到 cookie 后立刻回到 fetch.py。
+完整用法见 `chrome-bridge` 的 SKILL.md。
 
 ## 注意事项
 

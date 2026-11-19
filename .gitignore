@@ -26,3 +26,6 @@ node_modules/
 
 # 临时调研/脚本产物（本目录不入库）
 .tmp_research/
+
+# chrome-bridge 测试产物（profile / 截图 / 输出）
+chrome-bridge/tests/.work/
