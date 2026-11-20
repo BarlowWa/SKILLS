@@ -21,7 +21,7 @@ description: 编写/设计 C++ / Rust / Java / Python 测试时使用。先做�
 | C++ | `*_test.cpp`、`*_unittest.*`、`tests/`、`test/`、`unittest/` | `references/cpp.md` | ✅ |
 | Rust | `tests/*.rs`、`src/**` 内 `#[cfg(test)]`、`///` doctest | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测 + 26 条用例变异验证） |
 | Java | `src/test/**`、`src/testFixtures/**`、`*Test.java`、`*Tests.java`、`*IT.java` | `references/java.md` | ✅ 已就绪（JUnit 5 实测；Mockito / AssertJ 按文档） |
-| Python | `test_*.py`、`*_test.py`、`tests/` | `references/python.md` | ⏳ |
+| Python | `test_*.py`、`*_test.py`、`tests/` | `references/python.md` | ✅ 已就绪（pytest 9.2.0 + Python 3.14.6 实测：发现规则 / 参数化展开 / 跳过形态 / `-O` 断言差异 / async 插件缺失；httpx 样本覆盖 pytest 惯用法与 Windows 代理环境陷阱） |
 
 > **路由优先级**：先按扩展名/构建文件判定语言，再看是否属于测试路径。扩展名能唯一确定语言、但目录不在上表时（如仓库外置的 `add_test.rs`），仍按该语言处理，并在输出中注明判定依据——不得因路径未命中而静默降级或跳过。
 

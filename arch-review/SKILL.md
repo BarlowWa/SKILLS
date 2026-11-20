@@ -107,7 +107,8 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
 | Java 依赖图 / 证据与规则 | `references/java.md` | ✅ 已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 路径按官方文档核对） |
 | ARCH-JAVA-001…011 | `references/java.md` | ✅ 规则已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 未在样本上实测）。**样本未触达的条目**：ARCH-JAVA-003（样本为单模块，无多模块分层可查）、ARCH-JAVA-007（样本未用 shade 插件）——规则仍在，只是本样本未验到 |
-| Python 证据与规则 | `references/python.md` | ⏳ 首次真实项目时创建 |
+| Python 依赖图 / 证据与规则 | `references/python.md` | ✅ 已就绪（CPython 3.14.6 + httpx 实测：23 个模块；import-time 图无环，计入 `TYPE_CHECKING` 边后出现 2 个假 SCC——AST 依赖图必须声明口径，且未覆盖动态导入） |
+| ARCH-PY-001…011 | `references/python.md` | ✅ 规则已就绪（CPython 3.14.6 + httpx 实测）。**样本未触达的条目**：ARCH-PY-006（单包库无框架分层）、ARCH-PY-007（无 split/namespace 形态）、ARCH-PY-010（无跨版本 API 对比）、ARCH-PY-011 的消费者侧 mypy 核对——规则仍在，只是本样本未验到 |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。
 > Java 的 `pom.xml` 与 `build.gradle` 并存时，按模块分别判定并注明以哪个构建文件为准（SKILL.md『工作流程』第 1 步）。
@@ -174,4 +175,5 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
   - 第三方封装：`code-rules`（C++：cpp.md）PLAT-003 管"第三方原生句柄/指针必须二次封装"，本技能 ARCH-003 管"模块级适配层与依赖方向"。
   - Rust：`code-rules/references/rust.md` 的 RUST-UNSAFE-* 管单文件/crate 内的 unsafe 与 FFI 写法（含 `unsafe impl Send/Sync` 的 SAFETY 论证 = RUST-UNSAFE-005、`unsafe extern` 与 FFI 边界写法），本技能 ARCH-RS-005/006 管模块/crate 级隔离与跨动态库边界；对外发布面的 API 契约（SemVer、`#[non_exhaustive]` / sealed 的**发布策略**）归 ARCH-RS-007，单类型如何写（何时加 `#[non_exhaustive]`、sealed 的实现方式）归 RUST-API-002，重叠处按 code-rules 报一次；Rust 无 PLAT-004 对应条目，模块级环按 ARCH-RS-004 判定。
   - Java：`code-rules/references/java.md` 管单文件内的资源、异常、集合、并发与安全写法（如 JAVA-SEC-005 原生反序列化禁令）；本技能 ARCH-JAVA-001…010 管依赖 scope 隔离、`requires transitive`、reactor 方向、依赖仲裁、构建产物导出面（multi-release jar / OSGi）与 JPMS 导出面，ARCH-JAVA-011 管模块口径降级为包口径时的包级环分级。`module-info.java` 与 `package-info.java` 在 code-rules 中豁免，其导出面与可见性形态只由本技能判定。测试依赖隔离（ARCH-JAVA-010）判的是 `main` 是否 import 测试库，测试代码质量归 `test-review`，不重复。
+  - Python：`code-rules/references/python.md` 管单模块内的 import 形态、单模块顶层副作用（PY-IMPORT-002）、单文件注解/命名与路径安全；本技能 ARCH-PY-003 管模块级循环导入，ARCH-PY-005 管**跨模块** import 期全局状态与初始化顺序，ARCH-PY-002/009 管 extras 隔离与可复现依赖面，ARCH-PY-004/010/011 管包级 `__all__`/重导出、兼容性与 `py.typed` 发布面，ARCH-PY-008 管入口点。code-rules 的 PY-IMPORT-003 只判「函数内延迟导入的写法与注释」，不判环本身；同一缺陷只报一次，按上述归属选 ID。
 - `test-author` / `test-review`：测试目录按『注意事项』放宽；测试设计归 `test-author`、测试质量审查归 `test-review`，本技能不审查测试代码。

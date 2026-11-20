@@ -80,7 +80,7 @@
 
 ## 与其他 skill 的级别换算
 
-仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ / Rust / Java 均已有专属语言规则文件，Python 按各技能降级路径）。**本表已从 `references/severity-mapping.md` 内联至此**——审查子 agent 只需加载本文件即可换算，无需另读第三个 reference。本表是**外部快照**，他 skill 的级别口径变更时须同步本表；独立的核对命令保留在 `references/severity-mapping.md`（该文件仍保留，供脱离本技能单独核检）。
+仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ / Rust / Java / Python 均已有专属语言规则文件）。**本表已从 `references/severity-mapping.md` 内联至此**——审查子 agent 只需加载本文件即可换算，无需另读第三个 reference。本表是**外部快照**，他 skill 的级别口径变更时须同步本表；独立的核对命令保留在 `references/severity-mapping.md`（该文件仍保留，供脱离本技能单独核检）。
 
 - **blocker** ≈ 各 skill 的**最高级**：`code-rules` blocker、`arch-review` critical、`test-review` blocker、`test-author` blocker、`db-rules` blocker
 - **major** ≈ `arch-review` major（其余 skill 为两级，无对应级）
