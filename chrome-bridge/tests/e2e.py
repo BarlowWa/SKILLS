@@ -3,6 +3,7 @@
 用法：先启动 tests/canary-server.py，再跑本脚本。
 """
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -14,12 +15,19 @@ check = Checker()
 PROFILES = ("e2e",)
 
 print("== 0) 清理旧 profile ==")
+# 只 close 不够：profile 里的 sid 是持久 cookie（Max-Age=3600），
+# 上次跑完登录态会留到下一次，导致「未登录」前提不成立、下游 4 条连带失败（实测 7/11）。
+# 本用例的契约是「从干净状态开始」，必须真正删除 profile 目录。
 close_all(*PROFILES)
 time.sleep(0.5)
 P = WORK / "e2e"
+shutil.rmtree(P, ignore_errors=True)
 
 print("== 1) 服务端未登录 ==")
-check("/api/me 未登录", api_me().get("isLogin") is False, json.dumps(api_me()))
+# 前置断言：前提若不是「未登录」，后面的未登录用例全部失真——让它在源头就红。
+_me = api_me()
+check("/api/me 未登录（前提：这条不成立则后续未登录用例无意义）",
+      _me.get("isLogin") is False, json.dumps(_me))
 
 print("== 2) 未登录访问受保护页 ==")
 code, out, err = run(["render", BASE + "/protected", "--max-chars", "400"], P)
