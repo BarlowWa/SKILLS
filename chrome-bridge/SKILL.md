@@ -14,7 +14,7 @@ description: 用真实 Chrome 抓取 fetch.py 抓不到的页面——需要登�
 | `正文几乎为空` / 只有导航栏 | `render` |
 | `需要登录态` / 401 / 登录墙 | `login` → `cookies --values` → fetch.py 接力 |
 | SPA 内容在 `<script>` 里，DOM 是空壳 | `render`（默认 `--wait stable`） |
-| 人机验证 / Cloudflare / `Just a moment` | `render --headful`，人工过闸（**已有浏览器在跑时 `--headful` 被忽略，先 `close`**，见下『注意事项』） |
+| 人机验证 / Cloudflare / `Just a moment`（需要人工过闸） | **`login --headful --timeout 420`**（登录闸门会阻塞轮询并保持窗口，见下）；页面自动过盾、无需人工时 `render --headful` 亦可。**`render` 生命周期只到导航+等待为止，不等用户交互**，别用它做过闸 |
 | 要截图看页面长什么样 | `snapshot` |
 | 要 cookie 但不想开浏览器登录 | `cookies`（前提：profile 里已经有登录态） |
 
@@ -39,7 +39,7 @@ python $CB login "https://passport.bilibili.com/login" --timeout 420 --shot logi
 $h = python $CB cookies bilibili.com --values
 python $FETCH --raw --header "Cookie: $h" "https://api.bilibili.com/x/web-interface/nav"
 
-# 用完关掉（必须！否则登录态可能丢）
+# 用完关掉（建议；不关不丢登录态，但会占着 profile 锁与后台资源）
 python $CB close
 ```
 
@@ -89,7 +89,14 @@ python $CB close
 | `close` | 优雅关闭 | 无参 |
 
 全局参数：`--profile <目录>`（默认 `~/.claude/chrome-bridge/profile`）、`--chrome-arg <参数>`
-（透传 Chrome flag，如 `--chrome-arg=--proxy-server=...`）。
+（透传 Chrome flag，如 `--chrome-arg=--proxy-server=...`；**危险 flag 会被拒绝**，见「安全边界」）。
+
+环境变量：`CHROME_BRIDGE_PROFILE`（不改 `--profile` 时的默认 profile 目录）、
+`CHROME_BRIDGE_CHROME`（指定 chrome 可执行文件路径，找不到浏览器时用）。
+
+退出码：`0` 成功；`1` 一般错误（Chrome 启动失败、页面异常等）；`2` `login` 超时未检测到登录态
+（页面已截图，状态在 stdout 的 JSON 里）；`3` **`render --wait-for` 等不到目标元素**（页面仍输出到
+stdout / `-o`，meta 里 `timed_out=true`）；`4` 输入错误（非法 CSS 选择器、被拒绝的 `--chrome-arg`）。
 
 `--headful` 例外：它在全局和各抓取类子命令上都注册了，**放在子命令前或后都可以**
 （`attach` / `close` 这两个元命令上没有，用不到）；
@@ -184,11 +191,10 @@ python $CB fill "https://x.com/login" --field "#pass=a=b"
 - **`cookies --values` 输出的是会话令牌明文**，会进命令历史和模型上下文。只在确实需要接力时才带 `--values`；
   其余场景用默认的脱敏模式（只列 cookie 名，够用来判断「有没有登录」）。
 - profile 目录含加密后的登录态，**不要**提交进 git、不要复制给别的机器。
-- 不要用 `--chrome-arg=--disable-features=DevToolsDebuggingRestrictions` 去接管用户的**日常** Chrome profile
-  ——那等于把密码管理器和全部 cookie 暴露给本机任意进程。本 skill 只用独立 profile。
-- 也不要用 `--chrome-arg` 传 `--user-data-dir`（会覆盖专用 profile）或
-  `--remote-debugging-address=0.0.0.0`（会把调试端口暴露到局域网）。
-- 调试端口只绑 `127.0.0.1`，且用完建议 `close`，不留常驻端口。
+- 以下三类 `--chrome-arg` **会被 chrome.py 直接拒绝（退出码 4）**，不只是文档建议：
+  `--user-data-dir`（覆盖专用 profile）、`--remote-debugging-address`（把调试端口暴露到局域网）、
+  `--disable-features=DevToolsDebuggingRestrictions`（让本机任意进程接管浏览器调试口）。
+- 调试端口只绑 `127.0.0.1`（启动参数里显式写死，不依赖 Chrome 默认绑定），且用完建议 `close`，不留常驻端口。
 
 ## 排障
 

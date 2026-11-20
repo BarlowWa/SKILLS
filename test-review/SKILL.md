@@ -24,7 +24,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | ---- | -------- | ---- |
 | C++ | `references/cpp.md`（gtest/Catch2/doctest、Death Test、CMake/CTest 证据、假阳性陷阱） | ✅ |
 | Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（cxx 1.0.205 实测；nextest 未装） |
-| Java | `references/java.md`（Surefire/Failsafe 默认 include 模式、surefire-reports XML、JUnit 5 跳过形态、Vintage 引擎缺失、Mockito 假绿） | ✅ 已就绪（jsoup 1.18.3 实测：全量 `mvn test` 1370 条 / 45 skipped；类级与方法级 `@Disabled` 的 XML message 实测，Assumptions abort 按文档——样本未使用 assume） |
+| Java | `references/java.md`（Surefire/Failsafe 默认 include 模式、surefire-reports XML、JUnit 5 跳过形态、Vintage 引擎缺失、Mockito 假绿） | ✅ 已就绪（jsoup 1.18.3 实测：全量 `mvn test` 1370 条 / 45 skipped——**注意该次运行整体为红（`Errors: 1`，ConnectTest 时序 flake），1370 是「已收集」总数而非「全绿」**，详见 references/java.md「假阳性陷阱」；类级与方法级 `@Disabled` 的 XML message 实测，Assumptions abort 按文档——样本未使用 assume） |
 | Python | `references/python.md` | ⏳ |
 
 > **路由优先级**：先按扩展名/构建文件判定语言，再看是否属于测试路径。扩展名能唯一确定语言、但目录不在上表时（如仓库外置的 `add_test.rs`），仍按该语言处理，并在输出中注明判定依据——不得因路径未命中而静默降级或跳过。

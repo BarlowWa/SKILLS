@@ -51,8 +51,8 @@ stderr 会给出提示，按提示对照：
 | 现象 | 原因 | 对策 |
 | ---- | ---- | ---- |
 | `正文几乎为空` | 页面靠 JS 渲染（SPA） | 用 `--raw` 看原始响应；内容确在 JS 里则此法抓不到，改用 `chrome-bridge render`（见下节） |
-| `正文几乎为空` | 需要登录态 | 先 `--method POST --cookie-jar <file> --data "..." <login_url>` 登录，再带同一 jar 抓内页；扫码/短信登录用 `chrome-bridge login` |
-| `正文几乎为空` | 反爬拦截，返回验证页 | 检查 HTTP 状态码与 `--raw` 返回内容；Cloudflare 类用 `chrome-bridge render --headful`（**已有浏览器在跑时 `--headful` 被忽略、只会附着**，先 `chrome-bridge close`） |
+| `正文几乎为空` | 需要登录态 | 先 `--method POST --cookie-jar <file> --data "..." <login_url>` 登录，再带同一 jar 抓内页；扫码/短信登录用 `chrome-bridge login --headful --timeout 420`（人工过闸用 login，不用 render） |
+| `正文几乎为空` | 反爬拦截，返回验证页 | 检查 HTTP 状态码与 `--raw` 返回内容；Cloudflare 类需人工过闸时用 `chrome-bridge login --headful --timeout 420`（登录闸门会阻塞并保持窗口；`render` 不等用户交互，别用它过闸） |
 | 正文乱码 | 自动探测的字符集不对 | 加 `--encoding <字符集>`（如 `gb18030`）显式指定；可先 `--raw` 看字节、或用文件头/HTTP 头判断编码 |
 | `--raw` 输出乱码 | `--raw` 是**逐字节**输出，不做解码，终端按自身编码显示非 UTF-8 文本会乱 | 文本类目标加 `--encoding <字符集>`；真正的二进制（图片/压缩包）应重定向到文件而不是看终端 |
 | 内容被截断 | 超出 `--max-chars` | 调大 `--max-chars`；或用 `--selector` 缩小范围（**前提是已装 `cssselect`**，否则无效） |
@@ -77,7 +77,7 @@ $h = python $CB cookies example.com --values
 # ③ 拿到 cookie 后回 fetch.py 接力（比每次开浏览器快一个数量级）
 python $FETCH --raw --header "Cookie: $h" "https://api.example.com/x"
 
-# ④ 记住优雅关闭，否则登录态可能丢
+# ④ 用完优雅关闭（不关不丢登录态，但会占着浏览器与 profile 锁）
 python $CB close
 ```
 

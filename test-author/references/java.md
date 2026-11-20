@@ -76,7 +76,7 @@
 ## CONTRACT-001 细化：Java 特有契约
 
 - `equals` / `hashCode` / `compareTo` 的一致性契约（自反、对称、传递、与 hashCode 联动、与 compareTo 一致）——用 EqualsVerifier（可选库）或手写对称性/传递性用例固定。
-  > **成对设计**：类型的 `equals` 一旦声明为**顺序无关**（Map/Set 语义，如基于按键查找的实现），`hashCode` 与 `equals` 的一致性用例就是强制项——`Array.hashCode`、`Arrays.hashCode(keys)` 这类按索引计算的实现会在此暴露（实测 jsoup `Attributes.equals` 顺序无关、`hashCode` 顺序敏感，违反 `Object#hashCode` 契约，且其自带测试无覆盖）。反过来，`compareTo` 与 `equals` 不一致的用例同理。
+  > **成对设计**：类型的 `equals` 一旦声明为**顺序无关**（Map/Set 语义，如基于按键查找的实现），`hashCode` 与 `equals` 的一致性用例就是强制项——`Arrays.hashCode(keys)`、`Objects.hash(...)` 这类按索引计算的实现会在此暴露（实测 jsoup `Attributes.equals` 顺序无关、`hashCode` 顺序敏感，违反 `Object#hashCode` 契约，且其自带测试无覆盖）。反过来，`compareTo` 与 `equals` 不一致的用例同理。
 - `record` 的自动 `equals`：数组组件按引用比较（`文档`：`java.lang.Record`），契约需要值语义时必须有覆盖该差异的用例。
 - `Serializable`：`serialVersionUID` 未显式声明时，任何字段/方法签名的重构都会让序列化失败——契约要求跨版本兼容时，用例须固定序列化字节并断言反序列化。
 - 注解处理器 / Lombok 生成的 API：以**编译成功**作为契约证据（缺失的实现/多余的 API 会让调用方编译失败）；需要固定「应当编译失败」的契约时用 Google 的 compile-testing 库（第三方，可选）。

@@ -106,7 +106,7 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | Rust 依赖图 / 证据与规则 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
 | ARCH-RS-001…010 | `references/rust.md` | ✅ 已就绪（cxx 1.0.205 实测；ARCH-RS-007 SemVer 工具未装） |
 | Java 依赖图 / 证据与规则 | `references/java.md` | ✅ 已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 路径按官方文档核对） |
-| ARCH-JAVA-001…011 | `references/java.md` | ✅ 已就绪（同上；Gradle 未在样本上实测。ARCH-JAVA-003 因样本为单模块而不适用，ARCH-JAVA-007 因样本未用 shade 插件而不适用） |
+| ARCH-JAVA-001…011 | `references/java.md` | ✅ 规则已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 未在样本上实测）。**样本未触达的条目**：ARCH-JAVA-003（样本为单模块，无多模块分层可查）、ARCH-JAVA-007（样本未用 shade 插件）——规则仍在，只是本样本未验到 |
 | Python 证据与规则 | `references/python.md` | ⏳ 首次真实项目时创建 |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。

@@ -2,7 +2,7 @@
 
 > **已内联：映射表已移入 `references/blocking-criteria.md` 的「与其他 skill 的级别换算」一节**——`plan-review` 审查子 agent 只加载 `review-dimensions.md` 与 `blocking-criteria.md` 两个 reference，不再加载本文件。**本文件保留作独立核检工具**：下面的核对命令用于验证映射表未随他 skill 改版而过期；表内容如与 `blocking-criteria.md` 不一致，以 `blocking-criteria.md` 为准并**两处同步**。
 
-仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ 与 Rust 有专属语言规则文件，Java / Python 按各技能降级路径）。本文件是**外部快照**——他 skill 的级别口径变更时须同步本表（下方附有核对命令）。
+仅在审查涉及 C++ / Rust / Java / Python / 数据库实现、需引用他 skill 结论作依据时使用（目前 C++ / Rust / Java 均已有专属语言规则文件，Python 按各技能降级路径）。本文件是**外部快照**——他 skill 的级别口径变更时须同步本表（下方附有核对命令）。
 
 ---
 
@@ -19,12 +19,14 @@
 映射表会随他 skill 改版而静默过期。怀疑不一致时，在 skills 根目录执行：
 
 ```bash
-# code-rules 的 blocker/warning 规则在 references/<lang>.md（C++ / Rust 已就绪）
+# 自动枚举各技能的 SKILL.md 与 references/*.md —— 不再写死语言清单，
+# 新增语言（如 Python）时本命令自动覆盖，避免「表里说已就绪、命令里还漏着」的再次漂移。
 grep -nE 'critical|blocker|warning|major|minor' \
-  arch-review/SKILL.md arch-review/references/rust.md \
-  code-rules/SKILL.md code-rules/references/cpp.md code-rules/references/rust.md \
-  test-review/SKILL.md test-review/references/rust.md \
-  test-author/SKILL.md test-author/references/rust.md db-rules/SKILL.md
+  arch-review/SKILL.md arch-review/references/*.md \
+  code-rules/SKILL.md code-rules/references/*.md \
+  test-review/SKILL.md test-review/references/*.md \
+  test-author/SKILL.md test-author/references/*.md \
+  db-rules/SKILL.md
 ```
 
 - `arch-review` 应为 `critical` / `major` / `minor` 三级；

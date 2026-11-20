@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ipaddress
 import json
 import os
 import re
@@ -80,7 +81,15 @@ def find_chrome() -> str:
 
 
 def profile_dir(args) -> Path:
+    """profile 目录一律转成**绝对路径**。
+
+    不能用相对路径：Chrome 以自己的 cwd 解析 `--user-data-dir`（Windows 上通常是安装目录），
+    而 `_wait_port` 用本进程 cwd 找 `DevToolsActivePort` —— 两边对不上就会稳定超时 30s，
+    并在别处留下一个无人认领的 Chrome。实测：`--profile tests/.work/x` 必失败，
+    `--profile <绝对路径>` 正常。
+    """
     p = Path(args.profile).expanduser() if getattr(args, "profile", None) else DEFAULT_PROFILE
+    p = p.expanduser().absolute()
     p.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -427,7 +436,38 @@ class Session:
         self.cdp.close()
 
 
-def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str]) -> None:
+# 不允许经 `--chrome-arg` 生效的 flag：它们是本技能安全边界的前提（见 SKILL.md「安全边界」）。
+# 只挡「会覆盖/越界」的形态，正常调优 flag（--proxy-server 等）照常透传。
+_FORBIDDEN_CHROME_ARGS = {
+    "--user-data-dir": "会覆盖专用 profile，使登录态泄漏到日常 Chrome 或反之",
+    "--remote-debugging-address": "会把调试端口暴露到 loopback 之外（局域网可接管浏览器）",
+}
+
+
+def _check_extra_args(extra_args: list[str]) -> None:
+    """在启动前拒绝危险 flag —— 安全边界必须落在代码里，不能只写在文档里。
+
+    只做前缀匹配：`--user-data-dir=/x`、`--user-data-dir /x`、`--remote-debugging-address=0.0.0.0`
+    都会被拦下；`--disable-features` 仅在显式带 `DevToolsDebuggingRestrictions` 时拦
+    （否则会误伤正常用 `--disable-features=A,B` 调优的场景）。
+    """
+    for raw in extra_args:
+        a = (raw or "").strip()
+        if not a:
+            continue
+        name = a.split("=", 1)[0]
+        # `--user-data-dir /x` 这种「空格分参数」的写法：name 就是完整的 --user-data-dir
+        if name in _FORBIDDEN_CHROME_ARGS and name != "--disable-features":
+            die(f"--chrome-arg 禁止传 {name}：{_FORBIDDEN_CHROME_ARGS[name]}", code=4)
+        # `--disable-features` 只有在显式带 DevToolsDebuggingRestrictions 时才拦——
+        # 正常的 `--disable-features=A,B` 调优不该被误伤。
+        if name == "--disable-features" and "DevToolsDebuggingRestrictions" in a:
+            die(f"--chrome-arg 禁止传 --disable-features=DevToolsDebuggingRestrictions："
+                f"等于让任意进程接管浏览器调试口", code=4)
+
+
+def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str]) -> "subprocess.Popen":
+    _check_extra_args(extra_args)
     port_file = devtools_port_file(prof)
     try:
         port_file.unlink()
@@ -435,6 +475,9 @@ def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str
         pass
     args = [
         chrome,
+        # 调试端口只绑 loopback。不依赖 Chrome 的默认绑定——显式写死，
+        # 这样「边界在代码里」可被机械核对，而不是靠 Chromium 某版本的默认行为。
+        "--remote-debugging-address=127.0.0.1",
         "--remote-debugging-port=0",
         f"--user-data-dir={prof}",
         "--no-first-run",
@@ -453,16 +496,29 @@ def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    subprocess.Popen(args, **kwargs)
+    return subprocess.Popen(args, **kwargs)
 
 
-def _wait_port(prof: Path, timeout: float = 30.0) -> int:
+def _wait_port(prof: Path, timeout: float = 30.0, proc: "subprocess.Popen | None" = None) -> int:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         p = read_devtools_port(prof)
         if p and port_alive(p):
             return p
         time.sleep(0.05)
+    # 启动失败必须回收刚拉起的子进程：它是 DETACHED 的，不 kill 就成孤儿——
+    # 持着 profile 锁、占着 profile 目录，下一次启动会继续失败（实测：僵尸 Chrome
+    # 锁住 tests/.work/<profile>/OptimizationGuideModelsManifest，目录删不掉）。
+    if proc is not None and proc.poll() is None:
+        try:
+            if IS_WINDOWS:
+                proc.kill()          # DETACHED_PROCESS 下 Popen.kill() 走 TerminateProcess
+            else:
+                proc.terminate()
+            proc.wait(timeout=5)
+            log("启动超时，已回收刚拉起的 Chrome 进程")
+        except Exception as e:
+            log(f"启动超时想回收 Chrome 但失败：{type(e).__name__}: {e}")
     die(f"Chrome 启动超时（{timeout}s）：未在 {devtools_port_file(prof)} 拿到可用端口")
 
 
@@ -487,9 +543,9 @@ def ensure_session(args, headless: bool | None = None, force_headful: bool = Fal
             chrome = os.environ.get("CHROME_BRIDGE_CHROME") or find_chrome()
             mode = "headful" if force_headful else ("headless" if headless else "headful")
             log(f"启动 Chrome（{mode}）…")
-            _launch_chrome(chrome, prof, headless and not force_headful,
-                           getattr(args, "chrome_arg", None) or [])
-            port = _wait_port(prof)
+            proc = _launch_chrome(chrome, prof, headless and not force_headful,
+                                  getattr(args, "chrome_arg", None) or [])
+            port = _wait_port(prof, proc=proc)
             launched = True
             log(f"就绪，端口 {port}")
 
@@ -575,6 +631,22 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
       --wait-for SELECTOR 等到该元素出现且有文本才返回 —— 唯一确定性的等待方式
     """
     cdp = sess.cdp
+    # 选择器语法预校验必须在 Page.navigate **之前**：语法错误是「输入错误」，
+    # 不该先发起一次导航再报错。与「等不到」（退出码 3）区分开（退出码 4）。
+    if wait_for:
+        try:
+            r = cdp.send("Runtime.evaluate", {
+                "expression": "(() => { try { document.querySelector(%s); return ''; } "
+                              "catch (e) { return String(e && e.name || e); } })()"
+                              % json.dumps(wait_for),
+                "returnByValue": True,
+            })
+            if ((r.get("result", {}).get("value") or "").strip()):
+                return {"url": url, "title": "", "text": "", "timed_out": False,
+                        "reached": False, "selector_invalid": True,
+                        "selector_error": f"非法的 CSS 选择器：{wait_for!r}"}
+        except Exception:
+            pass
     for m in ("Network.requestWillBeSent", "Page.loadEventFired", "Page.frameNavigated"):
         cdp.events(m)  # 清空旧事件
     cdp.send("Page.navigate", {"url": url})
@@ -598,6 +670,8 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
         except Exception:
             return False
 
+    # 选择器语法预校验已在导航前完成（见上），此处不再重复。
+    reached = False          # 等待条件是否真的达成（超时退出时为 False）
     while time.monotonic() < deadline:
         cdp.pump(0.05)
         now = time.monotonic()
@@ -611,8 +685,10 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
             cdp._events["Network.requestWillBeSent"].clear()
 
         if wait == "load" and load_fired and selector_ready():
+            reached = True
             break
         if wait == "networkidle" and load_fired and now - last_activity > 1.5 and selector_ready():
+            reached = True
             break
         if wait == "stable" and load_fired and now - load_start > 0.3:
             try:
@@ -620,9 +696,8 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
             except Exception:
                 n = dom_len
             if n != dom_len:
-                # DOM 变了 → 重新开始计稳定窗口与「是否静态页」判定
+                # DOM 变了 → 重新开始计稳定窗口
                 dom_since = None
-                static_from_start = False
             elif selector_ready():
                 # 注意：这里**不**要求网络静默。定时器渲染不产生请求，而页面加载完后
                 # 「网络静默」立刻就成立，用它做门槛等于没有门槛（实测慢 SPA 会被截断）。
@@ -632,11 +707,17 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
                 # 完全无法区分（都是一段长度不变的内容/空壳），任何提前退出都会误伤慢 SPA。
                 # 代价是静态页也要等满 min_wait —— 想快就用 `--wait load` 或 `--wait-for`。
                 if now - dom_since > settle and now - load_start > min_wait:
+                    reached = True
                     break
             dom_len = n
         time.sleep(0.02)
 
-    return read_page(sess)
+    data = read_page(sess)
+    # 只有 --wait-for 是「等到才返回」的**强承诺**；其余模式等不到条件属正常（超时即返回当前页）。
+    # 但调用方必须能区分「等到了」与「等超时」，否则会把半渲染空壳当成成功（旧行为，实测踩坑）。
+    data["timed_out"] = bool(wait_for) and not reached
+    data["reached"] = reached
+    return data
 
 
 def check_antibot(text: str) -> str | None:
@@ -699,12 +780,17 @@ def cmd_render(args) -> int:
     try:
         data = nav(sess, args.url, args.wait, args.timeout,
                    settle=args.settle, min_wait=args.min_wait, wait_for=args.wait_for)
+        if data.get("selector_invalid"):
+            # 非法选择器是输入错误，不是页面问题：直接报错退出，不打印半成品正文。
+            die(f"{data['selector_error']}（--wait-for 语法错误，已中止）", code=4)
         # 滚动必须在 nav 之后、且不能再导航一次 —— 否则会把懒加载出来的内容冲掉，
         # 还会对目标站发出双倍请求。
         if args.scroll:
             rounds = scroll_bottom(sess, args.scroll)
             log(f"向下滚动 {rounds} 轮以触发懒加载")
+            timed_out = data.get("timed_out", False)   # 滚动前 nav 的结论，滚动后 read_page 会丢
             data = read_page(sess)
+            data["timed_out"] = timed_out
 
         if args.screenshot:
             p = Path(args.screenshot)
@@ -729,9 +815,15 @@ def cmd_render(args) -> int:
             print(summary)
 
         meta = {"url": data["url"], "title": data["title"], "chars": len(data["text"]),
-                "warning": warning, "screenshot": args.screenshot, "out": args.out}
+                "warning": warning, "screenshot": args.screenshot, "out": args.out,
+                "timed_out": data.get("timed_out", False)}
+        if data.get("timed_out"):
+            meta["error"] = f"--wait-for 未在 {args.timeout}s 内出现：{args.wait_for}"
+            log(f"⚠ {meta['error']}；返回的是当前（可能未渲染完的）页面")
         print(json.dumps(meta, ensure_ascii=False), file=sys.stderr)
-        return 0
+        # --wait-for 是强承诺：等不到就不算成功。页面仍输出（便于排查），但退出码 3 让调用方
+        # 能机械区分（脚本里 `if python chrome.py render ... --wait-for X; then ...`）。
+        return 3 if data.get("timed_out") else 0
     finally:
         sess.close_target()
 
@@ -1012,16 +1104,36 @@ def hint_from_url(url: str) -> str:
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
 
+def _is_ip(host: str) -> bool:
+    """判断宿主是否 IP 字面量（IPv4 / IPv6）。IPv6 cookie 域常带方括号，一并剥掉。"""
+    try:
+        ipaddress.ip_address(host.strip("[]"))
+        return True
+    except ValueError:
+        return False
+
+
 def cookie_matches_domain(cookie_domain: str, domain: str) -> bool:
-    """严格匹配：域名相等或以 .<domain> 结尾。
+    """严格匹配：域名相等，或以 `.<domain>` 结尾。
 
     不能简单用 `in`：`"bilibili.com" in "evilbilibili.com"` 为真，会把仿冒域算进来。
+    两个额外约束，都是实测踩出来的：
+      1. 后缀比较必须带前导点，且 `d` 必须是**多标签**域名——`localhost` 不能被 `st` 命中。
+      2. **IP 地址只接受相等匹配，不参与后缀匹配**——`127.0.0.1` 与 `0.0.1` 都是合法 IP 字面量，
+         按点切分会被误当成父子域；而 cookie 本就绑在单个 IP 宿主上。
     """
     c = (cookie_domain or "").lstrip(".").lower()
     d = (domain or "").lstrip(".").lower()
     if not c or not d:
         return False
-    return c == d or c.endswith("." + d)
+    if c == d:
+        return True
+    if _is_ip(c) or _is_ip(d):
+        return False
+    # 后缀分支只在 d 是多标签域名时成立（单标签主机名不参与后缀匹配）
+    if "." not in d:
+        return False
+    return c.endswith("." + d)
 
 
 def login_state(sess: Session, domain_hint: str) -> dict:
@@ -1292,7 +1404,6 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("snapshot", help="截图")
     s.add_argument("--url", help="先导航到该 URL 再截图")
     s.add_argument("-o", "--out", default="snapshot.png")
-    s.add_argument("--tab", default="new")
     s.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT)
     add_headful(s)
     s.set_defaults(func=cmd_snapshot)
