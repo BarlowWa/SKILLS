@@ -6,6 +6,7 @@ import json
 import os
 import socketserver
 import sys
+import time
 import urllib.parse
 import uuid
 
@@ -85,6 +86,28 @@ FLOW_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>登录闸
 <button id="submit" type="submit">登录</button></form>
 <p>验证码 1234</p></body></html>"""
 
+# load 后发起一个慢请求；用于验证 networkidle 必须等在途请求完成（N7）
+SLOW_API_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>慢接口</title></head>
+<body><h1>慢接口</h1><div id="result">WAITING</div>
+<script>
+setTimeout(function(){
+  fetch('/slow-api-data').then(function(r){ return r.text(); }).then(function(t){
+    document.getElementById('result').innerText = t;
+  });
+}, 100);
+</script></body></html>"""
+
+# 发起慢请求后主动 abort；用于验证 loadingFailed 能清理在途计数（N7 的失败路径）
+SLOW_ABORT_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>中断请求</title></head>
+<body><h1>中断请求</h1><div id="result">WAITING</div>
+<script>
+var c = new AbortController();
+fetch('/slow-api-data', {signal: c.signal}).then(function(r){ return r.text(); })
+  .then(function(t){ document.getElementById('result').innerText = t; })
+  .catch(function(e){ document.getElementById('result').innerText = 'ABORTED'; });
+setTimeout(function(){ c.abort(); }, 200);
+</script></body></html>"""
+
 
 class Handler(http.server.BaseHTTPRequestHandler):
     def _send(self, code, body, ctype="text/html; charset=utf-8", headers=None):
@@ -136,6 +159,13 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, LAZY_HTML)
         elif path == "/flow":
             self._send(200, FLOW_HTML)
+        elif path == "/slow-api":
+            self._send(200, SLOW_API_HTML)
+        elif path == "/slow-abort":
+            self._send(200, SLOW_ABORT_HTML)
+        elif path == "/slow-api-data":
+            time.sleep(2.5)
+            self._send(200, "SLOW-API-DONE", "text/plain; charset=utf-8")
         elif path == "/guest-session":
             # 未登录的普通首页，但服务端给游客也发了一个「会话」cookie。
             # 这类 cookie 名不能当登录证据（复审 N2 的复现用例）。

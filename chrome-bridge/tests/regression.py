@@ -1,10 +1,12 @@
 """针对代码审查发现的每个 blocker / major 的回归测试。
 
-每条用例对应一个具体缺陷，修好之前应当失败。
+缺陷用例在修复前应当失败；纯防回归门（修复前也能通过）会在用例上方注明，
+用来防止修复实现引入新的退化。
 用法：先启动 tests/canary-server.py，再跑本脚本。
 """
 import json
 import sys
+import time
 import urllib.request
 
 from common import BASE, WORK, Checker, close_all, fresh_profile, run  # noqa: E402
@@ -177,6 +179,43 @@ print("== N6) 相对 --profile 路径必须可用 ==")
 _relargs = type("A", (), {"profile": "tests/.work/reg-rel-probe"})()
 _abs = _chrome.profile_dir(_relargs)
 check("profile_dir 返回绝对路径", _abs.is_absolute(), str(_abs))
+
+# ---------------------------------------------------------------- N7
+print("== N7) networkidle 必须等在途请求完成 ==")
+# 设计依据（test-author）：
+#   契约：--wait networkidle = load 后 1.5s 无新请求，且无在途请求。
+#   边界：慢响应 2.5s（旧实现只按请求开始计时，1.5s 即提前返回，本用例修复前为红）；
+#         fetch abort 触发 loadingFailed（在途计数必须清理，不能卡死）。
+#   期望来源：chrome.py nav() 的等待契约 + CDP Network 事件语义，不由当前实现反推。
+#   未覆盖：HTTP 5xx/重定向仍属 loadingFinished，不单独构造。
+#   定位：abort 用例是**修复后的防回归门**——旧实现不维护在途计数，修复前也通过；
+#         它防的是修复引入 loadingFailed 漏清理导致 networkidle 卡到导航超时。
+P = prof("reg-n7")
+
+
+def render_timed(url, out_name):
+    out = WORK / out_name
+    out.unlink(missing_ok=True)  # 防止上次运行的残留文件造成假绿
+    t0 = time.monotonic()
+    code, _, _ = run(["render", BASE + url, "--wait", "networkidle",
+                      "--timeout", "15", "-o", str(out)], P)
+    return code, read(out), time.monotonic() - t0
+
+
+# 12s 上界：高于本机实测（慢响应 ~4.9s、abort ~2.1s，均含 Chrome 启动），
+# 又明显低于 15s 导航超时；慢机若误报，优先查实现是否卡到超时，不要直接放宽到 15s。
+
+
+
+code, body, elapsed = render_timed("/slow-api", "reg-n7.md")
+check("慢响应返回前不应判定 networkidle", code == 0 and "SLOW-API-DONE" in body,
+      f"exit={code} elapsed={elapsed:.1f}s body={body[-80:]!r}")
+check("networkidle 不应等到导航超时", elapsed < 12, f"elapsed={elapsed:.1f}s")
+
+code, body, elapsed = render_timed("/slow-abort", "reg-n7b.md")
+check("被 abort 的请求不应卡住 networkidle", code == 0 and "ABORTED" in body,
+      f"exit={code} elapsed={elapsed:.1f}s body={body[-80:]!r}")
+check("abort 后不应等到导航超时", elapsed < 12, f"elapsed={elapsed:.1f}s")
 
 close_all(*PROFILES)
 sys.exit(0 if check.summary("回归") else 1)
