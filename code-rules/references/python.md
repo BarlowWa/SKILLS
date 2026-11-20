@@ -30,6 +30,10 @@
 
 - **PY-RES-004**（warning）：大量动态资源用 `contextlib.ExitStack` 统一接管；`ExitStack.callback` 的注册顺序与执行顺序相反，需要正序清理时用 `push` 并显式管理。
 
+- **PY-RES-005**（warning）：外部进程必须显式设置超时并检查返回码：`subprocess.run(..., timeout=..., check=True)`，或显式判断 `returncode`；禁止 `Popen` 后不 `wait/communicate` 就丢弃。
+  > 实测：`subprocess.run` 的 `timeout` 默认 `None`、`check` 默认 `False`（Python 3.14）；无超时的子进程挂起会永久阻塞调用方；`check=False` 时非零返回码被静默忽略（实测 `returncode == 3` 不抛异常）。
+  > 边界：确实要后台长驻的进程用 `Popen` 并显式管理 `wait`/`terminate` 与超时；`capture_output=True` 便于把 stderr 纳入错误信息。
+
 ## MUT：可变状态与别名
 
 > Python 的函数默认参数、类属性和闭包都在**定义时**求值，不是在调用时。
@@ -138,6 +142,14 @@
 
 - **PY-COLL-006**（warning）：`d[k]` 在键缺失时抛 `KeyError`；`d.get(k)` 返回 None；`d.setdefault(k, []).append(...)` 有副作用；`defaultdict` 读取不存在的键会插入默认值。按「缺失是否合法」「是否允许副作用」选择，不要一律用 `get`。
 
+## CACHE：缓存与生命周期
+
+> 缓存键包含 `self` 时，缓存会替调用方持有对象；缓存不是免费的。
+
+- **PY-CACHE-001**（warning）：`functools.lru_cache` 用于实例方法时，键包含 `self`，缓存会强引用实例（阻止回收），且 `self` 必须可哈希；无界缓存（`maxsize=None`）需评估内存。`functools.cached_property` 依赖实例 `__dict__`，**无 `__dict__` 的 `__slots__` 类**会抛 `TypeError`；删除属性可失效，需明确失效策略。
+  > 实测：对实例方法加 `lru_cache` 后删除实例并 `gc.collect()`，实例仍被缓存强引用；`lru_cache` 传 `[]` 抛 `TypeError: unhashable type: 'list'`；`cached_property` 在无 `__dict__` 的 `__slots__` 类上抛 `TypeError: No '__dict__' attribute ...`。
+  > 做法：实例级缓存用 `cached_property` 或显式 `WeakKeyDictionary`；全局 `lru_cache` 只用于纯函数/不可变参数，并在 `maxsize` 上设界。
+
 ## EXC：异常
 
 > Python 的异常是控制流的一部分；`except` 的范围就是你能处理的故障范围。
@@ -184,6 +196,11 @@
 - **PY-CONC-005**（warning）：异步请求上下文用 `contextvars`，不要用 `threading.local`——协程可在同一线程内切换，thread-local 会把 A 请求的值泄漏给 B 请求。
 
 - **PY-CONC-006**（warning）：Python 3.13+ 提供可选 free-threaded 构建（无 GIL）；依赖 GIL 的隐式原子性在 free-threaded 下不成立。库代码不得把「当前默认构建有 GIL」写进契约。
+
+- **PY-CONC-007**（warning）：`multiprocessing` 代码必须兼容 spawn 启动方式：Windows（实测本机仅 `spawn`）与 macOS 默认 spawn，子进程会重新导入主模块；进程创建必须在 `if __name__ == "__main__":` 保护下，禁止依赖 fork 才有的全局状态；传给子进程的参数必须可 pickle。
+  > 实测：`multiprocessing.get_start_method()` 为 `spawn`，`get_all_start_methods()` 为 `['spawn']`（Windows Python 3.14）。
+  > 为什么：spawn 下未加 `__main__` 守卫的模块级 `Process` 创建会递归启动子进程或抛 `RuntimeError`；fork 的写时复制语义在 spawn 下不存在。
+  > 边界：通用入口点/`__main__` 组织归 `arch-review` ARCH-PY-008；本条只判 multiprocessing 在 spawn 下的进程创建守卫。
 
 ## TIME：时间与时区
 

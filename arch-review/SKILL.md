@@ -108,7 +108,7 @@ description: 审查 C++ / Rust / Java / Python 项目的架构。分析模块依
 | Java 依赖图 / 证据与规则 | `references/java.md` | ✅ 已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 路径按官方文档核对） |
 | ARCH-JAVA-001…011 | `references/java.md` | ✅ 规则已就绪（JDK 25 + jsoup 1.18.3 实测；Gradle 未在样本上实测）。**样本未触达的条目**：ARCH-JAVA-003（样本为单模块，无多模块分层可查）、ARCH-JAVA-007（样本未用 shade 插件）——规则仍在，只是本样本未验到 |
 | Python 依赖图 / 证据与规则 | `references/python.md` | ✅ 已就绪（CPython 3.14.6 + httpx 实测：23 个模块；import-time 图无环，计入 `TYPE_CHECKING` 边后出现 2 个假 SCC——AST 依赖图必须声明口径，且未覆盖动态导入） |
-| ARCH-PY-001…011 | `references/python.md` | ✅ 规则已就绪（CPython 3.14.6 + httpx 实测）。**样本未触达的条目**：ARCH-PY-006（单包库无框架分层）、ARCH-PY-007（无 split/namespace 形态）、ARCH-PY-010（无跨版本 API 对比）、ARCH-PY-011 的消费者侧 mypy 核对——规则仍在，只是本样本未验到 |
+| ARCH-PY-001…011 | `references/python.md` | ✅ 规则已就绪（CPython 3.14.6 + httpx 实测）。**样本未触达的条目**：ARCH-PY-006（单包库无框架分层）、ARCH-PY-007（无 split/namespace 形态）、ARCH-PY-010（无跨版本 API 对比）——规则仍在，只是本样本未验到。ARCH-PY-011 的消费者侧 mypy 已实测（httpx editable 安装后，错误赋值被 mypy 2.4.1 捕获） |
 
 > Rust 的 crate 级普通依赖环由 Cargo 拒绝；dev-dependency 环与模块级环按 `references/rust.md` ARCH-RS-004 判定。
 > Java 的 `pom.xml` 与 `build.gradle` 并存时，按模块分别判定并注明以哪个构建文件为准（SKILL.md『工作流程』第 1 步）。

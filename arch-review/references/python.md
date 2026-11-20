@@ -125,7 +125,7 @@ extras（`[project.optional-dependencies]`）里的依赖不得成为核心模�
 带类型注解的库必须发布 `py.typed`（PEP 561），否则消费者的 mypy 会静默忽略库内注解；`py.typed` 与公开注解、stub（`.pyi`）应一致。
 **证据**：包内是否存在 `py.typed`；`[tool.mypy]` 配置；构建产物是否包含该文件（`pip show -f`）；在干净消费者项目中 `mypy` 对 `import pkg` 的解析结果。
 **判级**：有注解但缺 `py.typed` → minor；公开 API 全面无注解且无 stub → major；`py.typed` 存在但注解大量 `Any` → minor。
-**实测样本**：httpx 有 `py.typed`，`mypy strict = true` 配置生效；mypy 2.4.1 在**未装 `zstandard`** 的样本环境报 2 处 `unused-ignore`（`_decoders.py:33`、`_content.py:127`），装 `zstandard` 后只报 1 处（`_content.py:127`）——数字随可选依赖是否安装变化，引用时须写明环境。**消费者侧 mypy 核对未在本轮执行**，按「文档/核对」记录，SKILL.md 状态表单列。
+**实测样本**：httpx 有 `py.typed`，`mypy strict = true` 配置生效；mypy 2.4.1 在**未装 `zstandard`** 的样本环境报 2 处 `unused-ignore`（`_decoders.py:33`、`_content.py:127`），装 `zstandard` 后只报 1 处（`_content.py:127`）——数字随可选依赖是否安装变化，引用时须写明环境。**消费者侧 mypy 已实测**：把 httpx 以 editable 安装到独立 venv 后，消费者文件中的错误赋值 `wrong: int = httpx.URL(...)` 被 mypy 2.4.1 报为 `Incompatible types in assignment ... [assignment]`，证明 `py.typed` 生效、内联类型被解析。
 
 ## 三、先看这些再判级（Python 证据注意事项）
 
