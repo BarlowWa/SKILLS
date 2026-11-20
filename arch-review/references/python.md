@@ -58,16 +58,15 @@ extras（`[project.optional-dependencies]`）里的依赖不得成为核心模�
 **判级**：核心导入因缺 extras 失败 → critical；仅可选功能在调用时失败且报错清晰 → major；有清晰的 `pip install pkg[extra]` 提示 → minor。
 **实测样本**：httpx 的 `__init__.py` 在 `try/except ImportError` 中导入 `_main`（依赖 `click/rich/pygments` 的 CLI extras），缺失时回退为一个打印安装提示的 `main`；核心导入正常。
 
-### ARCH-PY-003：循环导入（critical / major / 不判）
+### ARCH-PY-003：循环导入（critical / major / minor / 不判）
 
-**判级必须结合「导入期是否失败」与「延迟导入是否有理由」**：
+**判级必须结合「导入期是否失败」与「环的形态」**：
 - `import <top>` 即抛 `ImportError` / `AttributeError`（部分初始化的模块被使用）→ **critical**；
 - 导入成功、但环内模块依赖初始化顺序（换入口、换 Python 版本、改导入顺序即可能失败）→ **major**；
 - 纯 `if TYPE_CHECKING:` 的类型导入 → **不判**（运行期不存在该边）；
-- 函数内延迟导入且紧邻注释说明为打破循环/隔离可选依赖 → **minor**（可以接受，记录技术债）；
-- 函数内延迟导入但无理由/注释 → **major**（隐藏依赖关系）。
-**证据**：SCC 列表 + 实际导入执行 + 逐条读延迟导入的注释；不要只凭 AST 图报 critical。
-**实测样本**：httpx 按 import-time 边无 SCC；把 `TYPE_CHECKING` 边算入才有 11 模块与 6 模块两个 SCC（`_transports/default.py` 的 `import httpx`、`_utils` 的 `from ._urls import URL` 均在 `if typing.TYPE_CHECKING` 内），按本条「纯 TYPE_CHECKING 导入不判」处理。另有一条无注释的函数内延迟导入（`_utils.py:163` 的 `from ._urls import URL`），与 `_urls -> _utils` 的顶层边构成 2 模块环，按「无理由的函数内延迟导入 → major」记录技术债；它不是 import-time 失败。
+- 函数内延迟导入（无论是否带注释）→ **minor**（隐藏模块级依赖）；是否缺少注释/理由由 `code-rules` PY-IMPORT-003（warning）判，本技能不重复判级。
+**证据**：SCC 列表 + 实际导入执行 + 区分 TYPE_CHECKING/函数内延迟导入；不要只凭 AST 图报 critical。
+**实测样本**：httpx 按 import-time 边无 SCC；把 `TYPE_CHECKING` 边算入才有 11 模块与 6 模块两个 SCC（`_transports/default.py` 的 `import httpx`、`_utils` 的 `from ._urls import URL` 均在 `if typing.TYPE_CHECKING` 内），按本条「纯 TYPE_CHECKING 导入不判」处理。另有一条无注释的函数内延迟导入（`_utils.py:163` 的 `from ._urls import URL`），与 `_urls -> _utils` 的顶层边构成 2 模块环，按「函数内延迟导入 → minor」记录隐藏依赖；缺少注释由 code-rules PY-IMPORT-003 记 warning，不在本技能重复判级。它不是 import-time 失败。
 
 ### ARCH-PY-004：包 `__init__` 重导出与公开面（minor；膨胀 major）
 
@@ -80,7 +79,7 @@ extras（`[project.optional-dependencies]`）里的依赖不得成为核心模�
 
 ### ARCH-PY-005：跨模块 import 期副作用与全局状态（major；初始化顺序 critical）
 
-模块顶层执行网络/磁盘 I/O、连接池创建、线程/进程启动、`logging.basicConfig()`、读环境变量写全局配置，或暴露可变单例并被多个模块依赖，属于跨模块架构问题。
+模块顶层执行网络/磁盘 I/O、连接池创建、线程/进程启动、读环境变量写全局配置，或暴露可变单例并被多个模块依赖，属于跨模块架构问题（单模块的日志配置归 `code-rules` PY-LOG-W001）。
 **证据**：扫描各模块顶层语句（非 `def`/`class`/常量赋值）；查找模块级可变全局与 `global` 使用；`grep -rn "basicConfig\|global "`。
 **判级**：模块间初始化顺序依赖且无显式顺序保证 → critical；跨模块共享可变全局 → major；仅单模块顶层副作用（如一个模块在导入时读配置）→ 交 `code-rules` PY-IMPORT-002，不在此重复。
 **边界**：`logging.getLogger(__name__)` 是模块级 logger 的惯用写法，不判；不可变常量表不判。
@@ -142,7 +141,8 @@ extras（`[project.optional-dependencies]`）里的依赖不得成为核心模�
 ## 四、与其他技能协同
 
 - `code-rules`（PY-*）负责**单模块内**的 import 形态、单模块顶层副作用、单文件类型注解、路径安全与安全写法；本技能负责**模块/包级**的依赖图、循环、公开面、extras/分层/入口点。
-- **循环导入**只由本技能 ARCH-PY-003 判；`code-rules` 不设循环导入条目（其 PY-IMPORT-003 只判函数内延迟导入的写法与注释）。
+- **循环导入**：环本身的判级只由 ARCH-PY-003（import-time critical / 初始化顺序 major / 纯 TYPE_CHECKING 不判 / 函数内延迟导入 minor）；函数内延迟导入的注释与写法由 `code-rules` PY-IMPORT-003（warning）判，本技能不重复判级。
+- **日志配置**：单模块的 `logging.basicConfig()` / root handler 归 `code-rules` PY-LOG-W001；跨模块全局日志状态与初始化顺序归 ARCH-PY-005。
 - **import 期副作用**：单模块顶层副作用归 `code-rules` PY-IMPORT-002；跨模块全局状态/初始化顺序归本技能 ARCH-PY-005。
 - **公开面**：单模块注解/命名归 `code-rules` TYPE/NAME；包级 `__all__`/重导出归 ARCH-PY-004；`py.typed`/类型发布面归 ARCH-PY-011；入口点归 ARCH-PY-008。
 - **依赖/构建**：单包 pyproject 正确性归 `code-rules` PY-BUILD-001/002；extras 隔离与可复现依赖面归 ARCH-PY-002/009。

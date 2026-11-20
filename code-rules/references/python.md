@@ -13,12 +13,13 @@
 
 ## RES：资源生命周期
 
-> 上下文管理器是 Python 的资源配对机制；手写 `try/finally` 只会漏掉异常路径。
+> 上下文管理器把获取/释放写进协议；手写的 `try/finally` 容易在异常覆盖、清理顺序和部分初始化路径上出错。
 
-- **PY-RES-001**（blocker）：文件、锁、连接、临时目录、线程池等 `with` 支持的资源必须用 `with` 管理；禁止手写 `try: ... finally: res.close()`。
-  > 为什么：`finally` 中 `close()` 抛出的异常会覆盖原异常；多资源时关闭顺序易写错（`with` 按**逆序**退出）。
+- **PY-RES-001**（blocker）：支持上下文管理器的资源（文件、锁、连接、临时目录、线程池等）必须用 `with` 管理；禁止用 `try/finally` 替代本可使用的 `with`。
+  > 为什么：`with` 在 `__exit__` 中统一处理异常路径；手写 `finally` 容易写错多资源的关闭顺序，或让 `close()` 的异常覆盖 try 体的原始异常。
   > 正例：`with open(p, encoding="utf-8") as fh, ThreadPoolExecutor() as pool: ...`。
-  > 例外：资源在 `with` 之前已创建且后续仍需使用时，用 `contextlib.ExitStack` 显式接管，不要回退到 finally；对象没有上下文管理器协议时，用 `ExitStack.callback(res.close)` 包装。
+  > 边界：对象不支持上下文管理器时，`try/finally` 或 `ExitStack.callback(res.close)` 均可，但必须覆盖所有退出路径；`@contextmanager` 的实现本身可以用 `try/finally`（它就是 `with` 的实现机制），不按本条判。
+  > 例外：资源在 `with` 之前已创建且后续仍需使用时，用 `contextlib.ExitStack` 显式接管，不要回退到 finally。
 
 - **PY-RES-002**（blocker）：禁止在 `finally` 中 `return` / `break` / `continue`——它们会吞掉 try 体正在传播的异常。
   > 为什么：Python 的 finally 在异常传播路径上仍会执行，其中的控制转移语句直接覆盖异常，调用方以为成功。
@@ -45,9 +46,6 @@
   > 实测：`[lambda: i for i in range(3)]` 调用结果为 `[2, 2, 2]`。
   > 检测：ruff `B023`（function-uses-loop-variable）。
 
-- **PY-MUT-004**（warning）：明确参数的所有权与拷贝语义：函数不得修改调用方传入的可变对象，除非契约明确声明；返回内部可变状态前先拷贝（浅拷贝或 `deepcopy`，按嵌套深度选择）。
-  > 实测：`copy.copy` 只复制外层，内层列表仍共享；`copy.deepcopy` 才隔离嵌套结构。
-
 ## NULL：None、空值与真值
 
 > `None` 是「没有值」的唯一惯用表示；`if x:` 表达的是真值，不是「x 非 None」。
@@ -70,7 +68,7 @@
 
 - **PY-EQ-001**（blocker）：`is` 只用于 `None` / `True` / `False` / 模块级单例 / 显式身份判断；值比较用 `==`。禁止用 `is` 比较数字、字符串、容器。
   > 实测：运行时构造的 `int("1000") is int("1000")` 为 False；但同一代码对象里的字符串字面量可能被驻留，`"hello" is "hello"` 为 True——`is` 的通过与否取决于解释器缓存，不能作为值语义。
-  > 检测：ruff `E712`（comparison-to-true/false，含 `x == True`）。
+  > 检测：ruff `F632`（is-literal，`x is "s"` / `x is 1`）；`E712` 管的是 `x == True`，不覆盖 `is` 值比较。
 
 - **PY-EQ-002**（blocker）：定义 `__eq__` 时必须同时定义 `__hash__`（或显式设 `__hash__ = None` 声明不可哈希）；相等对象必须有相同哈希。
   > 实测：只定义 `__eq__` 的类实例执行 `hash()` 抛 `TypeError: unhashable type`——Python 会自动把 `__hash__` 置为 None，放入 `set` / 作 `dict` 键时才发现。
@@ -127,7 +125,7 @@
 - **PY-COLL-001**（blocker）：遍历容器时禁止增删元素；需要条件删除时遍历副本（`for k in list(d):`）或用推导式构造新容器。
   > 实测：遍历 `dict` 时插入新键抛 `RuntimeError: dictionary changed size during iteration`；`list` 的增删虽不立即报错，但会跳过元素。
 
-- **PY-COLL-002**（blocker）：函数接收可变参数时不得原地修改，除非契约明确声明「就地修改」；返回内部可变状态前必须拷贝。
+- **PY-COLL-002**（blocker）：函数接收可变参数时不得**意外**原地修改；契约明确声明就地修改的 API（`list.sort`、`random.shuffle`、`heapq` 等）是正当的。返回内部可变状态前必须拷贝（浅拷贝或 `deepcopy`，按嵌套深度选择，见 PY-COLL-003）。
   > 为什么：调用方的列表/字典被意外修改后，问题往往在很远的地方才暴露。
 
 - **PY-COLL-003**（warning）：区分浅拷贝与深拷贝；嵌套结构用 `copy.deepcopy`，扁平结构用 `copy.copy` / `list(x)` / `dict(x)`，按实际深度选择，不要默认 deepcopy 大对象。
@@ -144,8 +142,9 @@
 
 > Python 的异常是控制流的一部分；`except` 的范围就是你能处理的故障范围。
 
-- **PY-EXC-001**（blocker）：禁止裸 `except:`；捕获具体异常类型。`except Exception` 只允许出现在进程/线程/框架边界，且必须记录并重新抛出或转换为契约异常。
+- **PY-EXC-001**（blocker）：禁止裸 `except:`；捕获具体异常类型。`except Exception` 原则上只允许出现在进程/线程/框架边界，且必须记录并重新抛出或转换为契约异常。
   > 实测：裸 `except:` 会捕获 `KeyboardInterrupt` / `SystemExit`（二者继承 `BaseException`），使 Ctrl-C 与退出信号失效。
+  > 边界：探测/兼容函数需要把解析失败转成 `False`/`None` 时，必须收窄到具体异常（如 `ipaddress.AddressValueError`）并紧邻注释；无注释地宽捕 `Exception` 仍按 blocker 记，因为它会把 `AttributeError`/`TypeError` 等程序性错误隐藏成正常结果。
   > 检测：ruff `E722`（bare-except）、`BLE001`（blind-except）。
 
 - **PY-EXC-002**（blocker）：禁止吞异常——`except ...: pass`、只 `print` 后继续、或记录后返回值仍被当作成功（G-SWALLOW）。要么传播（可包装，但保留原始信息），要么在紧邻处注释「有意忽略及理由」。
@@ -156,7 +155,7 @@
   > 检测：ruff `B904`（raise-without-from-inside-except）。
 
 - **PY-EXC-004**（blocker）：禁止用 `assert` 校验外部输入或公共 API 参数——`python -O` / `PYTHONOPTIMIZE` 会剥离 assert（实测：`python -O` 下库函数中的 `assert x > 0` 不再抛异常）。用 `if not ...: raise ValueError(...)`。
-  > 边界：内部不变式（开发期自检）可以用 assert；但一旦它是唯一校验，即属本条违规。
+  > 边界：按**数据来源**判断——外部/不可信输入或公共 API 参数校验用 assert → blocker（`-O` 下失效）；内部不变式（程序内部状态的前置/后置条件，不依赖外部输入）可以用 assert，即使它是该处的唯一检查，也属开发期自检；一旦该 assert 同时承担对外部输入的校验，按前者判。
   > 检测：ruff `S101`（assert）。
 
 - **PY-EXC-005**（warning）：库代码禁止 `sys.exit()` / `SystemExit`；抛出领域异常，由 CLI 入口转换为退出码。`sys.exit()` 在库中被调用会直接终止宿主进程。
@@ -173,14 +172,14 @@
   > 为什么：GIL 只保证单条字节码不并行执行，`counter += 1` 由多条字节码组成，线程切换可发生在中间；在线程池、回调、信号处理器之间共享计数/缓存时尤其危险。
   > 边界：只读的不可变数据、每线程独立对象无需加锁。
 
-- **PY-CONC-002**（blocker）：`asyncio` 协程中禁止调用阻塞 I/O、`time.sleep()`、同步数据库/HTTP 客户端；用 `async` 版本或 `asyncio.to_thread()`。`asyncio.run()` 只能在程序入口调用一次（实测在运行中的事件循环内调用抛 `RuntimeError`）。
+- **PY-CONC-002**（blocker）：`asyncio` 协程中禁止调用阻塞 I/O、`time.sleep()`、同步数据库/HTTP 客户端；用 `async` 版本或 `asyncio.to_thread()`。`asyncio.run()` 不得在已运行的事件循环内调用（实测抛 `RuntimeError`）；同一进程顺序多次调用是允许的，但每次都会新建/关闭事件循环，库代码不应自行管理事件循环。
   > 为什么：阻塞调用会占住事件循环线程，所有协程一起卡死。
 
-- **PY-CONC-003**（blocker）：`asyncio.create_task()` 的返回值必须保存强引用（集合/列表/`TaskGroup`），否则任务可能在完成前被 GC 取消；任务异常必须被 await 或通过回调处理。
+- **PY-CONC-003**（blocker）：`asyncio.create_task()` 的返回值必须保存强引用（集合/列表/`TaskGroup`），否则事件循环只持有弱引用，任务可能在完成前被 GC 回收、永远不会完成（事件循环会打印 `Task was destroyed but it is pending!`），但不会自动取消；任务异常必须被 await 或通过回调处理。
   > 文档：Python 文档明确要求保存任务引用，事件循环只持有弱引用。
   > 优先用 3.11+ 的 `asyncio.TaskGroup`（结构化并发，自动传播异常）。
 
-- **PY-CONC-004**（warning）：取消是协作式的；捕获 `asyncio.CancelledError` 后必须重新抛出（除非在做清理），不要在 `except Exception` 中把它吞掉。需要「不可取消」的清理时用 `asyncio.shield`，并注意 shield 只保护被包裹的 await。
+- **PY-CONC-004**（warning）：取消是协作式的；捕获 `asyncio.CancelledError` 后必须重新抛出（除非在做清理）。实测 `asyncio.CancelledError` 在 3.8+ 继承 `BaseException` 而非 `Exception`，所以 `except Exception` 抓不到它——不要用裸 `except:` / `except BaseException:` 把它吞掉。需要「不可取消」的清理时用 `asyncio.shield`，并注意 shield 只保护被包裹的 await。
 
 - **PY-CONC-005**（warning）：异步请求上下文用 `contextvars`，不要用 `threading.local`——协程可在同一线程内切换，thread-local 会把 A 请求的值泄漏给 B 请求。
 
@@ -266,9 +265,8 @@
 - **PY-IMPORT-001**（warning）：禁止通配导入 `from x import *`；包 `__init__.py` 的集中重导出是例外，但必须有显式 `__all__` 并由测试核对（包级公开面归 `arch-review`）。
   > 检测：ruff `F403` / `F405`；httpx 样本在 `__init__.py` 用 `from ._client import *` 并由 `test_exported_members.py` 断言 `__all__` 与模块成员一致——这是受控形态。
 
-- **PY-IMPORT-002**（blocker）：模块顶层不得执行有副作用的初始化：网络/磁盘 I/O、启动线程、`logging.basicConfig()`、读取环境变量并写全局配置、连接数据库。初始化放到显式的工厂/入口函数。
-  > 实测：库中调用 `logging.basicConfig()` 会给 root logger 挂 `StreamHandler`，改变宿主应用的日志行为。
-  > 边界：常量表、纯函数、类型定义不受限；跨模块全局状态与初始化顺序归 `arch-review` ARCH-PY-005。
+- **PY-IMPORT-002**（blocker）：模块顶层不得执行有副作用的初始化：网络/磁盘 I/O、启动线程、读取环境变量并写全局配置、连接数据库（日志配置见 PY-LOG-W001）。初始化放到显式的工厂/入口函数。
+  > 边界：库代码按 blocker；应用入口/配置模块在模块加载时读环境变量并构造配置对象，若集中、显式且无 I/O，可按 warning 记录。常量表、纯函数、类型定义不受限；跨模块全局状态与初始化顺序归 `arch-review` ARCH-PY-005。
 
 - **PY-IMPORT-003**（warning）：函数内延迟导入只用于打破循环依赖或隔离可选依赖，且必须紧邻注释说明原因；不得用延迟导入隐藏真实的 `ModuleNotFoundError`。
 
@@ -317,6 +315,6 @@
 - **`__init__.py` 的受控重导出**：有显式 `__all__` 且由测试核对的通配重导出，不按 `PY-IMPORT-001` 判；包级公开面本身归 `arch-review` ARCH-PY-004。
 - **`.pyi` 存根**：只应用 TYPE / NAME 规则；RES / EXC / CONC / LOG 等运行时规则不适用（存根不执行）。
 - **`if TYPE_CHECKING:` 块内导入**：不受 `PY-IMPORT-003` 的「延迟导入需注释」约束（仅类型检查，无运行期语义）。
-- **`assert` 的内部不变式**：仅用于开发期自检且不是唯一校验时不按 `PY-EXC-004` 判；公共 API 的参数/输入校验仍按 blocker。
+- **`assert` 的内部不变式**：仅用于内部状态自检、不承担外部输入校验时不按 `PY-EXC-004` 判（即使它是该处的唯一检查）；公共 API 的参数/输入校验仍按 blocker。
 - **生成代码与迁移脚本**：按 `PY-BUILD-003` 放宽风格规则；安全类 blocker 不豁免。
 - **第三方库的 `Any` 边界**：无类型标注的第三方 API 返回值转成 `Any` 后必须在最近边界收口（`cast` / 校验），不得让 `Any` 扩散到公开 API；不因「第三方没类型」整体豁免 TYPE。

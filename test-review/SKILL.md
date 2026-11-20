@@ -13,7 +13,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
   - **C++**：`*_test.cpp`、`*_unittest.*`、`tests/`、`test/`、`unittest/`（与 `test-author` 路由表一致；`.cc`/`.cxx` 源按项目惯例视同 `*_test.cpp`）
   - **Rust**：`tests/*.rs`、`src/**` 内 `#[cfg(test)]` 模块、`///` doctest（`#[cfg(test)]` 与 doctest 没有独立文件名，**必须**按源码标记扫描，不能只扫 `tests/` 目录）
   - **Java**：`src/test/**`、`src/testFixtures/**`、`*Test.java`、`*Tests.java`、`*IT.java`
-  - **Python**：`test_*.py`、`*_test.py`、`tests/`
+  - **Python**：`test_*.py`、`*_test.py`、`tests/`、`conftest.py`
   > **只有 `#[cfg(test)]` 单测、没有 `tests/` 目录的 Rust crate 是完整合法的测试布局**——按目录扫描会判成「无测试文件」并跳过全部审查，这是本技能最易漏的执行链盲区。`src/**` 必须按 `#[cfg(test)]` 标记纳入扫描。
 - **审查依据不限于测试源码**：EXEC 组还必须读**构建配置**与**运行产物**（注册清单、测试报告、CI 结果）。仅凭测试源码**无法**判断测试是否真被构建、注册、执行——这三类恰是"缺席类"缺陷，在源码里表现为"看起来没问题"。
 - **不适用**：生产代码编码规范（`code-rules`）、测试用例设计（`test-author`）、模块架构（`arch-review`）
@@ -25,7 +25,7 @@ description: 审查 C++ / Rust / Java / Python 测试代码质量。覆盖测试
 | C++ | `references/cpp.md`（gtest/Catch2/doctest、Death Test、CMake/CTest 证据、假阳性陷阱） | ✅ |
 | Rust | `references/rust.md`（cargo metadata/libtest `--list`/doctest 执行证据、`#[ignore]`/cfg/guard 形态、`should_panic`/`debug_assert` 陷阱） | ✅ 已就绪（cxx 1.0.205 实测；nextest 未装） |
 | Java | `references/java.md`（Surefire/Failsafe 默认 include 模式、surefire-reports XML、JUnit 5 跳过形态、Vintage 引擎缺失、Mockito 假绿） | ✅ 已就绪（jsoup 1.18.3 实测：全量 `mvn test` 1370 条 / 45 skipped——**注意该次运行整体为红（`Errors: 1`，ConnectTest 时序 flake），1370 是「已收集」总数而非「全绿」**，详见 references/java.md「假阳性陷阱」；类级与方法级 `@Disabled` 的 XML message 实测，Assumptions abort 按文档——样本未使用 assume） |
-| Python | `references/python.md`（pytest 配置优先级、`--collect-only` 对账、退出码 0–6、JUnit XML、skip/xfail/XPASS、`-O` 断言差异、fixture ERROR vs skip、async 插件缺失、Windows 代理假阳性） | ✅ 已就绪（pytest 9.2.0 + Python 3.14.6 实测：httpx `tests` 收集 1418 条；子集 `test_utils/test_api` 为 `3 failed, 49 passed`——**3 条失败是 Windows 注册表代理造成的环境问题，不是被测代码缺陷**，详见 references/python.md「假阳性陷阱」） |
+| Python | `references/python.md`（pytest 配置优先级、`--collect-only` 对账、退出码 0–6、JUnit XML、skip/xfail/XPASS、`-O` 断言差异、fixture ERROR vs skip、async 插件缺失、逐条失败归因） | ✅ 已就绪（pytest 9.2.0 + Python 3.14.6 实测：httpx `tests` 收集 1418 条；子集 `test_utils/test_api` 为 `3 failed, 49 passed`——**1 条为 Windows 注册表代理，2 条为 caplog 捕获 `uvicorn.access` 的日志隔离/运行器差异**，均不是被测代码缺陷；详见 references/python.md「假阳性陷阱」） |
 
 > **路由优先级**：先按扩展名/构建文件判定语言，再看是否属于测试路径。扩展名能唯一确定语言、但目录不在上表时（如仓库外置的 `add_test.rs`），仍按该语言处理，并在输出中注明判定依据——不得因路径未命中而静默降级或跳过。
 

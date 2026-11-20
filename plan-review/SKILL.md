@@ -27,7 +27,7 @@ description: 通用技术方案/实施计划审查。派发独立只读 agent �
 | major   | 会导致返工或重大风险的缺陷，应修复                  | 仅记录       |
 | minor   | 优化建议，可逐步改进                               | 仅记录       |
 
-**与其他 skill 的级别换算**（仅在审查涉及 C++ / 数据库实现，需引用他 skill 作依据时用）见 `references/blocking-criteria.md` 的「与其他 skill 的级别换算」一节（映射表已内联；独立的核检命令保留在 `references/severity-mapping.md`）。
+**与其他 skill 的级别换算**（仅在审查涉及 C++ / Rust / Java / Python / 数据库实现，需引用他 skill 作依据时用）见 `references/blocking-criteria.md` 的「与其他 skill 的级别换算」一节（映射表已内联；独立的核检命令保留在 `references/severity-mapping.md`）。
 
 ---
 
@@ -161,7 +161,7 @@ C 的结论**同样是意见**，对 C 报出的每条 blocker / major 按第 3 
 
 1. **每轮都用 Agent 工具派发独立子 agent**，子 agent 新建上下文，不继承主对话。
 2. **子 agent 类型用 `general-purpose`**（`Explore` 定位是「只读搜索、不审查」，无法胜任按 7 维度分级审查；`Plan` 偏重制定方案，亦不契合审查者角色）。**只读约束靠 prompt 写死**：在派发 prompt 内明确「**只读：不得修改任何计划、源码或其它被 Git 跟踪的文件；禁用 Edit / Agent 工具，不得递归派发孙 agent；Write 仅限 `.tmp_research/` 下的报告文件**」——审查者不得修改计划或其它被跟踪内容，也不得派发孙 agent。**默认不落盘，结论随最终回复返回**；确需落盘时只写 `.tmp_research/` 下的报告文件。
-3. **派发 prompt 内必须包含「计划全文」与「两个 references 文件的绝对路径」**，并指令子 agent 用 Read 加载 `review-dimensions.md`（审查维度）与 `blocking-criteria.md`（分级标准；**跨 skill 级别换算表已内联于该文件**，涉及 C++ / 数据库时按该节换算，不需另读第三个文件）。子 agent 新建上下文、不继承主对话，故计划全文必须显式写入 prompt，否则审查对象为空。绝对路径以**本 SKILL.md 所在目录**为基准拼接（`<本技能根目录>/references/...`），编排者派发时须填入实际安装路径。
+3. **派发 prompt 内必须包含「计划全文」与「两个 references 文件的绝对路径」**，并指令子 agent 用 Read 加载 `review-dimensions.md`（审查维度）与 `blocking-criteria.md`（分级标准；**跨 skill 级别换算表已内联于该文件**，涉及 C++ / Rust / Java / Python / 数据库时按该节换算，不需另读第三个文件）。子 agent 新建上下文、不继承主对话，故计划全文必须显式写入 prompt，否则审查对象为空。绝对路径以**本 SKILL.md 所在目录**为基准拼接（`<本技能根目录>/references/...`），编排者派发时须填入实际安装路径。
    > **计划引用了代码库文件时，把被引用文件的绝对路径一并写入 prompt，并指令子 agent 去 Read**（只读 agent 可以 Read，与其只读约束不冲突）。子 agent 新建上下文，拿不到主对话里已有的代码上下文；而 `FEAS`（可行性 / 反例）与 `COMP`（关键步骤缺失）的判断高度依赖计划所引用的真实代码与环境。缺这一步，这两类审查只能凭计划文本自述，深度受限。
    > **派发终审 C 时，还须把「终审」小节的「反向设计对抗」三步与三态判据逐字写入 prompt**——C 是新建上下文的只读 agent，**读不到本 SKILL.md**，只给 reference 路径它不会知道要做这步对抗。
 4. **复审 agent 必须拿到「上一轮清单（**逐条标注采纳情况**）+ 修订说明 + 修订后计划全文」**，三者缺一不可（第 1 轮复审对应初审 A 的清单与首次修订说明；后续轮次逐轮滚动，见「循环口径」）——**「驳回 / 未采纳」项的原文与理由也必须附上**，B 要对其反查并裁定（否则 B 会**只核对总条数**，把"漏登"误判成"已确认"）。

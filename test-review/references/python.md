@@ -10,7 +10,7 @@
   > 实测：同一目录同时放 `pytest.toml` / `pytest.ini` / `pyproject.toml`，分别带不同 `addopts`；依次隐藏 `pytest.toml`、`pytest.ini` 后，选中的集合从 `only_toml` → `only_ini` → `only_pyproject`。**旧版 pytest 可能不识别 `pytest.toml`**，以项目实际版本核对。
   > `pyproject.toml` 里是 `[tool.pytest.ini_options]`；`pytest.toml` / `.pytest.toml` 用 `[pytest]` 表。`addopts` 在 TOML 配置里是 **list**（实测写成字符串会报 `config option 'addopts' expects a list for type 'args'`，退出码 4）。
 - **默认收集规则**（pytest 9.2 实测）：文件名 `test_*.py` / `*_test.py`；类名前缀 `Test` 且**不能有 `__init__`**；函数/方法名前缀 `test`。`python_files` / `python_classes` / `python_functions` 可覆盖。
-  > 实测：`TestWithInit` 被静默跳过并给出 `PytestCollectionWarning: cannot collect test class ... because it has a __init__ constructor`；`NotATestClass` 与普通 `helper()` 不收集。收集数 2/4——「文件在 `tests/` 下」不等于「用例会被执行」。
+  > 实测：`TestWithInit` 被静默跳过并给出 `PytestCollectionWarning: cannot collect test class ... because it has a __init__ constructor`；`NotATestClass` 与普通 `helper()` 不收集。收集数少于文件里「看起来像 test」的函数数——「文件在 `tests/` 下」不等于「用例会被执行」。
 - **收集命令**：`pytest --collect-only -q`（或 `--co`）给出 `path::test[param]` 清单与总数；先跑收集、再跑执行，是对账的第一步。
   > 实测 httpx：安装 `httpcore/anyio/certifi/idna/chardet/zstandard` 等测试依赖后 `pytest tests --collect-only -q` 收集 **1418** 条；缺 `chardet`/`zstandard` 时分别为 1237/1378 条并带 collection error。**收集数随依赖是否可用变化**，报告必须写明环境。
 - **`testpaths` / `norecursedirs` / `--ignore` / `--deselect` / `-k` / `-m`**：这些是**排除**，被排除的用例在报告里是 `deselected` 或不出现，**不是 skipped**。
@@ -92,8 +92,9 @@ pytest 9.2 的 `ExitCode`（源码 `_pytest/config/__init__.py`）：
 ## 四、假阳性陷阱（定性前必读）
 
 - **网络标记不是自动跳过**：httpx 用 `@pytest.mark.network` 标记外网用例，但**没有默认 skip**；不显式 `-m "not network"` 就会真的访问网络。报告须写明是否排除。
-- **系统代理/注册表污染**（实测）：Windows 上 `urllib.request.getproxies()` 会读系统注册表；即使 `os.environ` 已清空，httpx 的 `get_environment_proxies()` 仍返回 `http://127.0.0.1:7897` 等代理，导致 `tests/test_utils.py` 3 条失败。`conftest.py` 的 `clean_environ` 只清环境变量，清不掉注册表——这是**环境问题**，不是被测代码缺陷。
-  > 实测：httpx 子集 `tests/test_utils.py tests/test_api.py` 为 `3 failed, 49 passed`；3 条失败分别为 `test_logging_request`、`test_logging_redirect_chain`、`test_get_environment_proxies[environment0-proxies0]`，均与代理环境相关。报告必须如实写「该次运行整体为红」及原因，不能只报「49 passed」。
+- **系统代理/注册表污染**（实测）：Windows 上 `urllib.request.getproxies()` 会读系统注册表；即使 `os.environ` 已清空，httpx 的 `get_environment_proxies()` 仍返回 `http://127.0.0.1:7897` 等代理，导致 `test_get_environment_proxies[environment0-proxies0]` 失败。`conftest.py` 的 `clean_environ` 只清环境变量，清不掉注册表——这一条是**环境问题**，不是被测代码缺陷。
+  > 但不要把所有失败都归给同一个环境因素：同一子集的另外 2 条失败（`test_logging_request`、`test_logging_redirect_chain`）的 JUnit failure message 显示 caplog 里多出 `('uvicorn.access', ...)` 记录，期望的 `httpx` 日志实际存在，属于日志隔离/运行器差异（实测 pytest 9.2.0 下出现；用 httpx pin 的 pytest 8.4.1 跑同一子集为 `1 failed, 51 passed`）。报告必须**按 failure message 逐条归因**，并如实写「该次运行整体为红」。
+  > 实测汇总：httpx 子集 `tests/test_utils.py tests/test_api.py` 为 `3 failed, 49 passed`——1 条注册表代理 + 2 条 caplog/运行器差异。
 - **缺失可选依赖导致 collection error**：httpx 缺 `chardet` / `zstandard` 时分别收集 1237 / 1378 条并报 collection error；补齐后 1418 条。审查前先确认依赖完整性，否则会把「没收集到」误读为「用例不存在」。
 - **插件与版本**：`pytest-asyncio` 未设置 `asyncio_default_fixture_loop_scope` 会在 `filterwarnings=error` 下 INTERNALERROR（实测）；`pytest-randomly` / `xdist` 会改变顺序与并行行为；插件版本必须记录。
 - **异步测试的失败形态**：`async def` 测试在没有 async 插件时是 **FAILED**（“async def functions are not natively supported”，实测），不是 skipped；报告里看到 FAILED 先确认插件，不要当业务缺陷。
