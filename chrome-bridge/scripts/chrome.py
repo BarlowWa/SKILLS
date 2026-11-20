@@ -322,19 +322,33 @@ class WSClient:
 # ----------------------------------------------------------------------------- CDP 客户端
 
 class CDP:
-    # 只保留真正需要的几类事件；其余直接丢弃，避免长导航/长登录时内存无界增长
-    INTERESTING_EVENTS = {"Page.loadEventFired", "Page.frameNavigated", "Network.requestWillBeSent"}
+    # 只保留真正需要的页面事件；网络事件只维护「在途请求」状态，不进事件桶
+    INTERESTING_EVENTS = {"Page.loadEventFired", "Page.frameNavigated"}
 
     def __init__(self, ws_url: str):
         self.ws = WSClient(ws_url, timeout=90)
         self._id = 0
         self._events: dict[str, list] = {}
+        # 在途请求状态独立于事件桶：事件桶有 64 条上限，丢弃事件会让计数卡死
+        self.network_in_flight: set[str] = set()
+        self.network_last_activity: float = 0.0
 
     def _on_event(self, msg: dict) -> None:
         name = msg.get("method")
+        params = msg.get("params") or {}
+        if name == "Network.requestWillBeSent":
+            rid = params.get("requestId")
+            if rid:
+                self.network_in_flight.add(rid)
+            self.network_last_activity = time.monotonic()
+        elif name in ("Network.loadingFinished", "Network.loadingFailed"):
+            rid = params.get("requestId")
+            if rid:
+                self.network_in_flight.discard(rid)
+            self.network_last_activity = time.monotonic()
         if name in self.INTERESTING_EVENTS:
             bucket = self._events.setdefault(name, [])
-            bucket.append(msg.get("params", {}))
+            bucket.append(params)
             if len(bucket) > 64:  # 兜底上限，防止极端情况下堆积
                 del bucket[:32]
 
@@ -617,7 +631,9 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
 
     wait 取值：
       load        —— loadEventFired 即返回（最快；静态页首选）
-      networkidle —— load 后网络静默 1.5s
+      networkidle —— load 后 1.5s 内**没有任何网络事件**（请求开始/完成），且**所有在途请求
+                     都已完成**（loadingFinished/loadingFailed 都会重置计时并清理计数；
+                     不只看「有没有新请求开始」）
       stable      —— 默认。load 后至少观察 min_wait 秒，之后 DOM 文本长度连续 settle 秒
                      不变才返回。
 
@@ -647,13 +663,14 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
                         "selector_error": f"非法的 CSS 选择器：{wait_for!r}"}
         except Exception:
             pass
-    for m in ("Network.requestWillBeSent", "Page.loadEventFired", "Page.frameNavigated"):
-        cdp.events(m)  # 清空旧事件
+    for m in ("Page.loadEventFired", "Page.frameNavigated"):
+        cdp.events(m)  # 清空旧页面事件
+    cdp.network_in_flight.clear()
+    cdp.network_last_activity = time.monotonic()
     cdp.send("Page.navigate", {"url": url})
     deadline = time.monotonic() + timeout
     load_start = None
     load_fired = False
-    last_activity = time.monotonic()
     dom_len, dom_since = -1, None
 
     def selector_ready() -> bool:
@@ -680,14 +697,11 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
                 load_start = now
             load_fired = True
             cdp._events["Page.loadEventFired"].clear()
-        if cdp._events.get("Network.requestWillBeSent"):
-            last_activity = now
-            cdp._events["Network.requestWillBeSent"].clear()
-
         if wait == "load" and load_fired and selector_ready():
             reached = True
             break
-        if wait == "networkidle" and load_fired and now - last_activity > 1.5 and selector_ready():
+        if (wait == "networkidle" and load_fired and not cdp.network_in_flight
+                and now - cdp.network_last_activity > 1.5 and selector_ready()):
             reached = True
             break
         if wait == "stable" and load_fired and now - load_start > 0.3:
@@ -699,8 +713,8 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
                 # DOM 变了 → 重新开始计稳定窗口
                 dom_since = None
             elif selector_ready():
-                # 注意：这里**不**要求网络静默。定时器渲染不产生请求，而页面加载完后
-                # 「网络静默」立刻就成立，用它做门槛等于没有门槛（实测慢 SPA 会被截断）。
+                # 注意：这里**不**要求 networkidle 式的「在途为 0」。定时器渲染不产生请求，
+                # 而页面加载完后网络活动立刻就静下来，用它做门槛等于没有门槛（实测慢 SPA 会被截断）。
                 if dom_since is None:
                     dom_since = now
                 # 不做「静态页提前返回」的优化：在渲染发生之前，静态页与慢 SPA 在 DOM 上
@@ -1389,7 +1403,7 @@ def build_parser() -> argparse.ArgumentParser:
     r.add_argument("-o", "--out", help="正文写入文件（推荐，长页面不上屏）")
     r.add_argument("--screenshot", help="同时保存截图到该路径")
     r.add_argument("--wait", choices=["load", "networkidle", "stable"], default="stable",
-                   help="load=load事件即返回；networkidle=网络静默1.5s；stable=至少观察min-wait秒后DOM稳定（默认）")
+                   help="load=load事件即返回；networkidle=1.5s内无网络事件且在途请求完成；stable=至少观察min-wait秒后DOM稳定（默认）")
     r.add_argument("--settle", type=float, default=0.8,
                    help="stable 模式：DOM 连续多少秒不变才算稳定（默认 0.8）")
     r.add_argument("--min-wait", type=float, default=3.5,

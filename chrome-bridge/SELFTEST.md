@@ -7,7 +7,7 @@
 ```bash
 python tests/canary-server.py      # 起服务（保持前台，另开一个终端）
 python tests/e2e.py                # 端到端 11 项
-python tests/regression.py         # 缺陷回归 32 项（N5 用循环跑 3 个 flag，故运行时多于源码里的 check 调用数）
+python tests/regression.py         # 缺陷回归 36 项（N5 用循环跑 3 个 flag，故运行时多于源码里的 check 调用数）
 python tests/login-e2e.py          # 登录闸门完整生命周期
 ```
 
@@ -23,7 +23,8 @@ python tests/login-e2e.py          # 登录闸门完整生命周期
 - **缺陷回归**：每个修过的 bug 至少一条用例——
   emoji 输出、`--headful` 两种写法、`--scroll` 单次导航、`--wait-for` 精确等待与超时语义、
   两类登录误判、**cookie 域名严格匹配（单元层正/反例 + CLI 层正例）**、
-  `--field` 两种解析、**`--chrome-arg` 危险 flag 拒绝**、**相对 profile 路径可用**。
+  `--field` 两种解析、**`--chrome-arg` 危险 flag 拒绝**、**相对 profile 路径可用**、
+  **`networkidle` 等在途请求完成（慢响应 + abort 两条路径）**。
 - **登录闸门**：未登录 → 轮询 → 期间登录 → 识别成功。
 
 ## 判据要求（写新用例时遵守）
@@ -46,6 +47,8 @@ python tests/login-e2e.py          # 登录闸门完整生命周期
 | `/guest-session` | 游客也发 `koa:sess`（验证不误判） |
 | `/counted` + `/count` | 请求计数（验证 `--scroll` 只导航一次） |
 | `/lazy` | 滚动才追加内容 |
+| `/slow-api` + `/slow-api-data` | load 后发起慢请求（2.5s 后返回 `SLOW-API-DONE`），验证 networkidle 等在途请求 |
+| `/slow-abort` | 发起慢请求后 abort（触发 `loadingFailed`），验证在途计数能清理 |
 | `/file` | 附件下载 |
 | `/api/me` | JSON 登录态（给 cookie 接力验证用） |
 
