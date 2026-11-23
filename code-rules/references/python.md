@@ -58,9 +58,9 @@
   > 为什么：`==` 可被 `__eq__` 重载，返回非布尔值或对 `None` 产生非预期匹配；`is` 是身份比较，语义明确。
   > 检测：ruff `E711`（comparison-to-none）。
 
-- **PY-NULL-002**（blocker）：判断「有值」时用 `x is not None`，不要用 `if x:`——`0`、`""`、`[]`、`{}`、`False` 都是合法值。
+- **PY-NULL-002**（blocker）：当契约把 `None` 与假值（`0`、`""`、`[]`、`{}`、`False`）视为不同状态时，判断「有值」必须用 `x is not None`，不要用 `if x:`——否则会把合法的假值当成缺失。
   > 反例：`if not value: return default` 会把合法的 `0` / 空字符串当成缺失。
-  > 边界：当契约明确把空值视为「无」时（如空列表表示无结果），`if not x:` 可接受，但契约必须写明。
+  > 边界：① 当契约明确把空值视为「无」时（如空列表表示无结果），`if not x:` 可接受，但契约必须写明；② 对容器做「是否为空」的判断（`if not items:` / `if items:`）是 PEP 8 推荐的惯用写法，不因本条判 blocker——本条针对的是「None 与假值语义不同、却用真值判断代替 None 判断」的接口。
 
 - **PY-NULL-003**（warning）：需要区分「缺失」与「显式 None」时用专用 sentinel（`_MISSING = object()`），不要复用 None；`dict.get(k)` 在 None 是合法值时不能表达「键不存在」。
 

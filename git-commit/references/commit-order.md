@@ -9,11 +9,11 @@
 ## 1. 命令
 
 ```bash
-TEST_FILE=<测试文件>               # 测试组提交所修改的测试文件（多个用空格分隔，见 §5）
-SRC_FILE=<源文件>                  # 被该测试覆盖、发生修复的源文件（多个用空格分隔）
+TEST_FILE="<测试文件>"             # 多个用空格分隔，整体加引号（见 §5）
+SRC_FILE="<源文件>"                # 多个用空格分隔，整体加引号（见 §5）
 TEST_COMMIT=<测试组提交>           # 用户确认的测试组提交哈希；本次无测试组时留空
 FIX_COMMIT=<修复组提交>            # 用户确认的修复组提交哈希；修复尚未提交时留空
-BASE_COMMIT=<本批起点>             # 把测试与修复拆成两个提交之前那一刻的 `git rev-parse HEAD`
+BASE_COMMIT=<本批起点>             # 拆成两个提交之前那一刻的 `git rev-parse HEAD`；根提交场景写 ROOT
 
 # 证据留存：先于任何分支打印，保证每条路径都能看到本批起点与相关文件的历史
 echo "--- 证据：本批起点 BASE_COMMIT=$BASE_COMMIT ---"
@@ -30,7 +30,7 @@ if [ -z "$FIX_COMMIT" ]; then
   exit 0
 fi
 if [ -z "$BASE_COMMIT" ]; then
-  echo "输入错误：缺少 BASE_COMMIT（本批拆分开始前的 HEAD）"
+  echo "输入错误：缺少 BASE_COMMIT（本批拆分开始前的 HEAD；根提交写 ROOT）"
   exit 2
 fi
 # 输入守卫（逐文件）：TEST_COMMIT 必须改动了每个 TEST_FILE，FIX_COMMIT 必须改动了每个 SRC_FILE
@@ -42,8 +42,19 @@ for f in $SRC_FILE; do
 done
 # ★ 本批判定：TEST_COMMIT 必须晚于 BASE_COMMIT。只看「是 FIX 的祖先」无法区分
 #   「本批测试提交」与「历史上改过同一测试文件的旧提交」（见 §3 的复现）。
-git merge-base --is-ancestor "$TEST_COMMIT" "$BASE_COMMIT" && { echo "输入错误：TEST_COMMIT 已包含在 BASE_COMMIT 中（历史提交，不是本批的）"; exit 2; }
-git merge-base --is-ancestor "$BASE_COMMIT" "$TEST_COMMIT" || { echo "输入错误：BASE_COMMIT 不是 TEST_COMMIT 的祖先（哈希或分叉有误）"; exit 2; }
+if [ "$(git cat-file -t "$BASE_COMMIT" 2>/dev/null)" = "tree" ]; then
+  echo "输入错误：BASE_COMMIT 是 tree，不是 commit（根提交请写 ROOT）"
+  exit 2
+fi
+if [ "$BASE_COMMIT" = "ROOT" ]; then
+  # 根提交模式：没有 HEAD 基线，要求 TEST_COMMIT 本身是仓库的根提交。
+  # 不能用空树哈希充当 BASE_COMMIT——`git merge-base --is-ancestor` 只接受 commit。
+  ROOT_COMMIT=$(git rev-list --max-parents=0 "$TEST_COMMIT" | tail -n 1)
+  [ "$ROOT_COMMIT" = "$(git rev-parse "$TEST_COMMIT")" ] || { echo "输入错误：ROOT 模式下 TEST_COMMIT 必须是仓库的根提交"; exit 2; }
+else
+  git merge-base --is-ancestor "$TEST_COMMIT" "$BASE_COMMIT" && { echo "输入错误：TEST_COMMIT 已包含在 BASE_COMMIT 中（历史提交，不是本批的）"; exit 2; }
+  git merge-base --is-ancestor "$BASE_COMMIT" "$TEST_COMMIT" || { echo "输入错误：BASE_COMMIT 不是 TEST_COMMIT 的祖先（哈希或分叉有误）"; exit 2; }
+fi
 # 顺序：测试组是修复组的祖先
 if ! git merge-base --is-ancestor "$TEST_COMMIT" "$FIX_COMMIT"; then
   echo "顺序错误：测试提交不在修复之前"
@@ -65,24 +76,29 @@ echo "顺序正确"
 exit 0
 ```
 
-> 执行前把前五行 `=<>` 的占位符换成实际值（尖括号直接粘进 bash 会语法错）。
-> **`TEST_FILE` / `SRC_FILE` 是空格分隔的多文件列表**：列表变量本身**不加引号**（`$TEST_FILE`），
-> 否则 `"$TEST_FILE"` 会整体当成一个路径（实测多文件模式因此失败）；循环体里单个元素**必须**加引号
-> （`-- "$f"`），以免该路径含空格或通配符时被再次拆分。
+> 执行前把前五行占位符换成实际值（前两行已带引号；后三行的 `<...>` 尖括号直接粘进 bash 会语法错）。
+> **`TEST_FILE` / `SRC_FILE` 是空格分隔的多文件列表**：**赋值时用引号包住整个列表**
+> （`TEST_FILE="a.py b.py"`）——不加引号时 bash 会把第二个路径当命令执行，且列表变量在脚本
+> shell 中为空，**逐文件守卫全部未执行**（实测：未加引号时 `regression.py` 被当作命令，守卫
+> 循环 0 次，脚本仍可能报「顺序正确」）。
+> 使用时展开**不加**引号（`$TEST_FILE`），否则 `"$TEST_FILE"` 会整体当成一个路径；
+> 循环体里单个元素**必须**加引号（`-- "$f"`），以免该路径含空格或通配符时被再次拆分。
 > 哈希用 `git rev-parse --short` 或完整哈希均可。`BASE_COMMIT` 取「最先把测试与修复拆成两批之前」的 HEAD；
-> 仓库尚无提交（根提交）时用空树哈希 `git hash-object -t tree /dev/null`。
+> 仓库尚无提交（根提交）时写 `ROOT`：此时没有 HEAD 基线，脚本要求 `TEST_COMMIT` 本身是仓库的根提交。
+> **不要用空树哈希**——`git merge-base --is-ancestor` 只接受 commit，传 tree 会以 128 退出（实测）。
 
 ## 2. 分支判定（与脚本输出一一对应）
 
-退出码 `0` 不阻断、`1` 顺序错误须阻止、`2` 需用户处理（顺序未证明或输入错误）。脚本共 **10 个 `exit`**
-（两个文件循环 `exit 2` 在多数场景只触发一次），归入**六个结论**——五个输入错误分支合并为一个「输入错误」结论。
+退出码 `0` 不阻断、`1` 顺序错误须阻止、`2` 需用户处理（顺序未证明或输入错误）。脚本共 **12 个 `exit`**
+（两个文件循环 `exit 2` 在多数场景只触发一次），归入**六个结论**——七个输入错误分支合并为一个「输入错误」结论。
 以下顺序与脚本自上而下一致：
 
 - `TEST_COMMIT` 为空（本次无测试组，如只提交修复）→ 「不适用：本次无测试组提交」，退出码 0，**不阻断**；
 - `FIX_COMMIT` 为空（只提交了测试组，修复尚未提交）→ 「尚未闭合：修复提交待完成」，退出码 0，**不阻断**；
   记录「顺序核对尚未闭合」，不得宣称已通过，修复组提交后再跑一次；
-- **输入错误**（任一：`BASE_COMMIT` 为空；`TEST_COMMIT` 未改动某测试文件；`FIX_COMMIT` 未改动某源文件；
-  `TEST_COMMIT` 已包含在 `BASE_COMMIT` 中；`BASE_COMMIT` 不是 `TEST_COMMIT` 的祖先）→ 退出码 2，
+- **输入错误**（任一：`BASE_COMMIT` 为空；`BASE_COMMIT` 是 tree 而非 commit；`TEST_COMMIT` 未改动某测试文件；
+  `FIX_COMMIT` 未改动某源文件；`ROOT` 模式下 `TEST_COMMIT` 不是仓库根提交；`TEST_COMMIT` 已包含在
+  `BASE_COMMIT` 中；`BASE_COMMIT` 不是 `TEST_COMMIT` 的祖先）→ 退出码 2，
   **不产出顺序结论**，由用户核对哈希与路径后重跑；
 - **顺序错误**（`TEST_COMMIT` 不是 `FIX_COMMIT` 的祖先）→ 「顺序错误：测试提交不在修复之前」，退出码 1，阻止继续；
 - **顺序未证明**（祖先关系成立，但任一侧污染：修复提交改动了某测试文件，或测试提交改动了某源文件）
@@ -120,7 +136,7 @@ exit 0
 ## 4. 确认页要求
 
 确认页须留「提交顺序核对」一行，写明命令（含 `TEST_COMMIT=`、`FIX_COMMIT=`、`BASE_COMMIT=`）、
-三个哈希与结论（上述六个结论之一）。
+三个标识（`BASE_COMMIT` 为哈希或 `ROOT`）与结论（上述六个结论之一）。
 
 ## 5. 多文件批次
 

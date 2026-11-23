@@ -8,7 +8,7 @@
 
 - **配置文件优先级**（pytest 9.2 源码 `_pytest/config/findpaths.py` 的 `CONFIG_LOADERS_BY_NAME`，实测）：`pytest.toml` > `.pytest.toml` > `pytest.ini` > `.pytest.ini` > `pyproject.toml` > `tox.ini` > `setup.cfg`。
   > 实测：同一目录同时放 `pytest.toml` / `pytest.ini` / `pyproject.toml`，分别带不同 `addopts`；依次隐藏 `pytest.toml`、`pytest.ini` 后，选中的集合从 `only_toml` → `only_ini` → `only_pyproject`。**旧版 pytest 可能不识别 `pytest.toml`**，以项目实际版本核对。
-  > `pyproject.toml` 里是 `[tool.pytest.ini_options]`；`pytest.toml` / `.pytest.toml` 用 `[pytest]` 表。`addopts` 在 TOML 配置里是 **list**（实测写成字符串会报 `config option 'addopts' expects a list for type 'args'`，退出码 4）。
+  > `pyproject.toml` 里是 `[tool.pytest.ini_options]`；`pytest.toml` / `.pytest.toml` 用 `[pytest]` 表。`addopts` 在 `pytest.toml` / `.pytest.toml` 的 `[pytest]` 表里必须是 **list**（实测写成字符串会报 `config option 'addopts' expects a list for type 'args'`，退出码 4）；`pyproject.toml` 的 `[tool.pytest]` 表（pytest 9.x 的 TOML 原生模式）与 `pytest.toml` 相同，`addopts` 也必须是 list；只有 `[tool.pytest.ini_options]` 同时接受字符串与 list（实测）。
 - **默认收集规则**（pytest 9.2 实测）：文件名 `test_*.py` / `*_test.py`；类名前缀 `Test` 且**不能有 `__init__`**；函数/方法名前缀 `test`。`python_files` / `python_classes` / `python_functions` 可覆盖。
   > 实测：`TestWithInit` 被静默跳过并给出 `PytestCollectionWarning: cannot collect test class ... because it has a __init__ constructor`；`NotATestClass` 与普通 `helper()` 不收集。收集数少于文件里「看起来像 test」的函数数——「文件在 `tests/` 下」不等于「用例会被执行」。
 - **收集命令**：`pytest --collect-only -q`（或 `--co`）给出 `path::test[param]` 清单与总数；先跑收集、再跑执行，是对账的第一步。
@@ -67,7 +67,7 @@ pytest 9.2 的 `ExitCode`（源码 `_pytest/config/__init__.py`）：
 - **`python -O` 与 assert**：pytest 会重写**测试模块**的 assert（替换为显式 `if + raise`），所以 `-O` 下测试模块的 assert **仍然执行**；未被 pytest 重写的辅助模块/插件/被测库中的 assert 才会被剥离。
   > 实测：`python -O -m pytest` 下 `test_o.py::test_assert_alive` 仍 FAILED；测试导入的 `helper.py` 中的 `assert` 被剥离，对应用例 **PASSED**，并输出 `PytestConfigWarning: assertions not in test modules or plugins will be ignored ... (are you using python -O?)`。
   > 审查要点：①被测代码/辅助函数中的 assert 在 `-O` 下是空断言；②测试本身若依赖 helper 的 assert 做校验，会变成假绿；③CI 不应在 `-O` 下跑测试，除非明确处理了该差异。
-- **`pytest.raises` 过宽**：`pytest.raises(Exception)` / 无 `match` 会接受任何异常（包括被测代码的错误 bug）；关键用例要断言具体类型 + `match`，异常链用 `exc_info.value.__cause__` 核对。
+- **`pytest.raises` 类型过宽或缺少 `match`**：类型写成 `Exception` / `BaseException` 会接受任何异常（包括被测代码的错误 bug）；使用具体类型但不带 `match` 时，无法区分同类异常的不同来源。关键用例要断言具体类型 + `match`，异常链用 `exc_info.value.__cause__` 核对。
 - **Mock 假绿**：`MagicMock` 会自动创建任意属性/返回值，`mock.foo.bar().baz` 永远可用；未加 `autospec` 的 patch 对签名错误不敏感。`assert_called_once_with` 只证明「按这个参数调用过」，不证明返回值被正确处理。
 - **标志位/空断言**：`try/except` 中置标志位的反模式（初始值写错、catch 后不再置位）在 pytest 中同样存在；`assert` 被 `-O` 剥离时，标志位断言也可能失效。审查时逐个核对「标志位初始值 + 置位点 + 断言」。
 - **参数化失败**：每个参数行是独立用例，一行失败不影响其余行（实测 7 条参数化用例各自独立）；但 for 循环写成的表驱动测试一次失败即中止剩余行（`test-review` COV-003）。

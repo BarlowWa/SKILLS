@@ -63,7 +63,8 @@
   > 为什么：`Integer` 的 `-128..127` 有缓存，`127 == 127` 为 true、`1000 == 1000` 为 false（实测）——这类缺陷只在特定取值下复现。
   > 做法：`Objects.equals(a, b)`（null 安全）/ `a.equals(b)`；枚举用 `==`；数组用 `Arrays.equals` / `Objects.deepEquals`。
 
-- **JAVA-EQ-003**（blocker）：数组字段的 `equals` / `hashCode` 必须用 `Arrays.equals` / `Arrays.hashCode`（若按元素语义比较）；禁止 `Objects.hash(array)`（它把数组当单个对象，走 `Object.hashCode` 的恒等哈希，实测与 `Arrays.hashCode` 结果不同）。
+- **JAVA-EQ-003**（blocker）：数组字段的 `equals` / `hashCode` 必须用 `Arrays.equals` / `Arrays.hashCode`（若按元素语义比较）；禁止用 `Objects.hash(基本类型数组)`（`int[]` / `long[]` 等不会被可变参数展开，走 `Object.hashCode` 的恒等哈希，实测与 `Arrays.hashCode` 结果不同）。
+  > 引用类型数组（`Object[]` / `String[]`）会被可变参数展开，`Objects.hash(Object[])` 实测等价于 `Arrays.hashCode(Object[])`；但仍应按元素语义显式使用 `Arrays.hashCode`，不要依赖这条重载的隐式展开。
   > **哈希口径必须与 equals 口径一致**：`equals` 声明为顺序无关（按 key 查找的 Map/Set 语义）时，`hashCode` 也必须顺序无关——按**位置**求哈希的 `Arrays.hashCode(keys)` / `Arrays.hashCode(vals)` 在元素顺序不同但内容相同时给出不同哈希，违反 `Object#hashCode` 契约（实测 jsoup `Attributes.java:521-548`：`equals` 按键查找、`hashCode` 按数组位置，顺序互换后 `equals=true` 而哈希不同，`HashMap.get` 返回 null）。
   > **哈希约定**：顺序无关集合的哈希常用「元素与元素哈希之和/异或」这类交换律运算，且须覆盖键与值两侧。
   > 若用 record 且组件是数组，record 自动生成的 `equals`/`hashCode` 也按引用比较——必须显式覆盖（文档：`java.lang.Record` 类文档）。
@@ -103,8 +104,9 @@
 
 > 默认 Locale 与默认 Charset 是部署环境的属性，不是程序的属性。
 
-- **JAVA-STR-001**（blocker）：文件、网络、压缩流等 I/O 的编解码必须显式指定 `Charset`（优先 `StandardCharsets.UTF_8`）；禁止依赖默认平台编码的 API：`new String(byte[])`、`String.getBytes()`、`new InputStreamReader(in)`、`new FileReader(file)`、`Files.readAllLines(path)`（无 Charset 重载的）。
+- **JAVA-STR-001**（blocker）：文件、网络、压缩流等 I/O 的编解码必须显式指定 `Charset`（优先 `StandardCharsets.UTF_8`）；禁止依赖默认平台编码的 API：`new String(byte[])`、`String.getBytes()`、`new InputStreamReader(in)`、`new FileReader(file)`。
   > 为什么：默认编码随平台/JVM 启动参数变化（本机为 UTF-8，Windows 默认区域设置下常见 GBK），同一份数据在不同环境产生乱码或替换字符。
+  > 边界：`Files.readAllLines(Path)`、`Files.newBufferedReader(Path)`、`Files.lines(Path)` 等 NIO 便捷方法**固定使用 UTF-8**（JDK 文档），不属于「平台默认编码」清单，不按本条判；需要非 UTF-8 时仍应显式传 `Charset`。实测（JDK 25，`-Dfile.encoding=GBK`）用 `Files.readAllLines(Path)` 读 GBK 字节会抛 `MalformedInputException`，证明它并未走平台默认 GBK。
   > 检测：SpotBugs `DM_DEFAULT_ENCODING`、Error Prone `DefaultCharset`（按所用版本核对）。
 
 - **JAVA-STR-002**（blocker）：面向用户的格式化、大小写转换、排序必须显式传 `Locale`；格式化用 `String.format(Locale.ROOT, ...)`，大小写用 `toLowerCase(Locale.ROOT)` / `toUpperCase(Locale.ROOT)`，比较用 `equalsIgnoreCase`。
@@ -228,7 +230,8 @@
 - **JAVA-SEC-003**（blocker）：处理用户可控路径拼接必须防穿越：`base.resolve(user).normalize()` 后校验 `startsWith(base.normalize())`，且拒绝 `user` 为绝对路径（`resolve` 遇绝对路径直接替换基路径）；目标存在时用 `toRealPath()` 解析符号链接再校验。
   > 为什么：仅 `normalize()` 不解析符号链接，也不阻止 `resolve` 被绝对路径替换；字符串拼接（`base + "/" + user`）在 Windows 下还会被 `\` 与盘符绕过。
 
-- **JAVA-SEC-004**（blocker）：解析不可信 XML 必须禁用 DTD 与外部实体：`DocumentBuilderFactory` / `SAXParserFactory` 设 `disallow-doctype-decl`、`external-general-entities`、`external-parameter-entities` 为 false，并设 `XMLConstants.ACCESS_EXTERNAL_DTD` / `ACCESS_EXTERNAL_SCHEMA` 为空；`TransformerFactory` 同理。
+- **JAVA-SEC-004**（blocker）：解析不可信 XML 必须禁用 DTD 与外部实体：`DocumentBuilderFactory` / `SAXParserFactory` 设 `disallow-doctype-decl` 为 **true**，`external-general-entities` / `external-parameter-entities` 为 **false**，并设 `XMLConstants.ACCESS_EXTERNAL_DTD` / `ACCESS_EXTERNAL_SCHEMA` 为空；`TransformerFactory` 同理。
+  > 极性必须核对：`http://apache.org/xml/features/disallow-doctype-decl` 为 **true** 才表示「禁止 DOCTYPE」，写成 false 等于允许 DTD 声明。OWASP XXE 防护速查表的基准配置即 `dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)`；后两项 external-entities 才是 false。
   > 为什么：XXE 可读取本地文件、发起 SSRF；仅设 `setExpandEntityReferences(false)` 不够。
   > **触发条件按实际解析入口判定，不按是否 `newInstance`**：只有存在 `builder.parse(...)`（或等价的 SAX `XMLReader.parse`）时才需要本组加固；仅用 `newDocumentBuilder().newDocument()` 构造 DOM、或用 `TransformerFactory` 从**内部已构建**的 DOM 序列化为字符串，不涉及外部 XML 解析，不适用本条（实测 jsoup `W3CDom.java:204-206` 只用 `newDocument()`、`:128` 的 `TransformerFactory` 只做序列化——按「见到 factory 即报」会误报）。
 
