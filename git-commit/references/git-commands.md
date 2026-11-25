@@ -52,13 +52,36 @@ git commit -m "<提交信息>" -- <路径...>
   `error: pathspec '--no-edit' did not match any file(s) known to git`（退出码 1）。
   正确形态：`git commit --amend --only --no-edit -- <路径...>`、`git commit --amend --only -m "<信息>" -- <路径...>`
 
-## 3. 提交后核对（每轮必做）
+## 3. 提交前核对（每轮必做，`git commit` 之前的最后一道闸）
 
-1. `git show --stat --oneline HEAD`：核对实际提交的文件与用户确认范围一致；不一致时立即报告。
-2. `git log -1 --format=%B`：核对完整提交信息（**COMMIT-010**）。`git show --stat` 不显示 footer，不能替代这一步；
-   若出现 `Co-Authored-By` 等作者注脚，必须删除后重新提交。
-3. 指定文件模式下若索引中仍有范围外暂存内容，清理信息必须用
-   `git commit --amend --only -m "<清理后的提交信息>"`，不要用裸 `--amend -m`（它会把整个索引带入）；
-   重新提交后再次核对第 1、2 步。若环境反复自动追加且无法删除，停止并报告冲突。
-4. `git commit` 非零退出（hook 失败、nothing to commit、pre-commit 改写文件等）时，不得报告成功；
-   说明退出码与输出，保留现场并询问用户。提交 hook 改写了文件时，重新核对 diff 与提交信息。
+**原则：能在 `git commit` 之前发现的错误，必须在之前发现。** 提交后再发现，代价是 `--amend`
+（改写提交对象、与 hook 交互、可能把范围外内容带入）；能用只读命令提前查出的，就不要靠事后返工。
+
+在**暂存完成之后、`git commit` 之前**逐条执行：
+
+1. `git diff --cached --name-status`：核对**将要入库的文件集**与用户确认范围一致。这等价于事后的
+   `git show --stat --oneline HEAD`，但此时还没写提交对象——范围不符只需 `git reset -- <路径>`，
+   不必 amend。**三种模式都适用**（全量模式在 `git add -A` 之后查；仅暂存区模式索引已是最终内容；
+   指定文件模式查 `git diff --cached -- `<路径...>` 确认只有这些路径在索引里）。
+2. `git diff --cached --check`：空白错误。提交后再查同样要 amend 才能修，提前查则一分钟改完。
+3. 核对**待写入的提交信息字符串**（即马上要传给 `-m` 的那段）：按 **COMMIT-010** 确认不含
+   `Co-Authored-By` 等作者注脚；按 COMMIT-001 确认标题 ≤72 **字符**且无句号。
+   > **中文标题不要用 `wc -c` 数字数**——它按字节计，UTF-8 下一个汉字 3 字节，42 字的标题会被数成 82 而误判超长。
+   > 用 `py -c "print(len('''<标题>'''))"` 或等价的字符计数方式。
+4. `git commit` 自身是否可能非零退出：`nothing to commit` 时第 1 步的文件集就是空的；
+   若项目配置了 pre-commit hook，可在提交前单独跑该 hook 的命令，避免它中途改写文件。
+
+**唯一无法前移的一项**：`commit-msg` / `prepare-commit-msg` hook 可以在 `-m` 字符串**固定之后**再改写提交信息
+（实测：hook 追加 `Co-Authored-By` 时，传入的 `-m` 干净而落库信息被污染）。因此**提交后仍必须跑 §3.1**：
+
+### 3.1 提交后核对（唯一必要项）
+
+- `git log -1 --format=%B` 核对**最终落库**的提交信息（COMMIT-010）。`git show --stat` 不显示 footer，
+  不能替代这一步；若出现 `Co-Authored-By` 等作者注脚，必须删除后重新提交。
+- 若 hook 改写了提交信息或文件（`git commit` 输出提示 hook 生效），`git show --stat --oneline HEAD`
+  复核实际提交范围是否仍与确认一致。
+- 指定文件模式下若索引中仍有范围外暂存内容，清理信息必须用
+  `git commit --amend --only -m "<清理后的提交信息>"`，不要用裸 `--amend -m`（它会把整个索引带入）；
+  重新提交后再次核对本节与前项。若环境反复自动追加且无法删除，停止并报告冲突。
+- `git commit` 非零退出（hook 失败、nothing to commit、pre-commit 改写文件等）时，不得报告成功；
+  说明退出码与输出，保留现场并询问用户。

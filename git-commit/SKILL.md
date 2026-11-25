@@ -32,7 +32,7 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 | 审查 agent 派发失败 | `references/edge-cases.md` §3（降级自查，不得当作「无问题」） |
 | 回滚 / 撤销、初始提交 | `references/edge-cases.md` §1、§4 |
 | 派发审查 agent | `references/agent-prompts.md` 的对应模板 |
-| 构造提交命令 / 提交后核对 | `references/git-commands.md` §1、§3 |
+| 构造提交命令 / 提交前核对 | `references/git-commands.md` §1、§3 |
 
 仅当**全部变更文件只落在一个审查类别、且该类只有一个规则来源**（文档、或构建 / 配置 / 脚本）时，
 「跨技能级别换算与去重」才可略——这两类各自只有一个判据文件，不存在跨技能混排。**代码类提交一律要用它**：
@@ -269,9 +269,14 @@ BREAKING CHANGE: 原字符串返回值改为 AuthResult 对象，调用方需同
 
 用户确认后，按确认的提交模式执行（三条主命令与陷阱说明见 `references/git-commands.md` §1）。
 
-**提交后核对每轮必做**，步骤与失败处理见 `references/git-commands.md` §3：`git show --stat --oneline HEAD`
-核对实际提交范围、`git log -1 --format=%B` 核对**不得出现 `Co-Authored-By` 等作者注脚**（COMMIT-010，
-`git show --stat` 不显示 footer，不能替代这一步）；`git commit` 非零退出时**不得报告成功**。
+**提交前核对每轮必做**——在暂存完成之后、`git commit` 之前执行，步骤见 `references/git-commands.md` §3：
+`git diff --cached --name-status` 核对**将要入库的文件集**（等价于事后的 `git show --stat`，但此时还没写提交对象，
+不符只需 `git reset -- <路径>` 而不必 amend）、`git diff --cached --check` 查空白错误、核对即将传给 `-m` 的
+**提交信息字符串**（COMMIT-001 / COMMIT-010）。**能在提交前发现的错误必须在提交前发现**，不要靠事后 amend 返工。
+
+提交后**只剩一项无法前移的核对**：`git log -1 --format=%B` 核对最终落库信息（`commit-msg` /
+`prepare-commit-msg` hook 能在 `-m` 固定之后改写它，已实测；`git show --stat` 不显示 footer，不能替代这一步）。
+出现 `Co-Authored-By` 等作者注脚必须删除后重新提交；`git commit` 非零退出时**不得报告成功**。
 
 提交完成后报告结果（commit hash、分支名、提交信息摘要）。
 
