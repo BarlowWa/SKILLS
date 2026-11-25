@@ -39,7 +39,7 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 代码审查 agent 始终同时加载 `code-rules` / `test-review` / `test-author` / `arch-review` / `db-rules`（见下文该节）。
 
 
-1. **检查状态**：运行 `git status`、`git diff --stat`，了解变更概览（空白检查在步骤 2 按模式执行，不要在此处用不带 pathspec 的 `git diff HEAD --check` 替代——它在仅暂存区模式下会被范围外改动污染）
+1. **检查状态**：运行 `git status`、`git diff --stat`，了解变更概览（空白检查在步骤 2 执行，基准按模式区分，命令见 `references/git-commands.md` §3）
 2. **分析差异**：先确定提交范围与模式（三选一），后续分析、审查、提交使用**同一范围**：
 
    | 模式 | 范围 | 审查命令 |
@@ -57,8 +57,8 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
      未跟踪文件按上表列表命令处理；不带 pathspec 的 `git commit` 前确认索引中只有目标文件；
      指定文件模式可直接 `git commit -m "<提交信息>" -- <路径...>`，不会带入索引中的其它文件
      （未跟踪文件需先 `git add -- <路径...>`）。
-   - 对选定范围检查空白错误：全量 `git diff HEAD --check`；仅暂存区 `git diff --cached --check`；
-     指定文件 `git diff HEAD --check -- <路径...>`；初始提交用 `git diff --cached --check`。
+   - 对选定范围检查空白错误：**命令按模式分条列在 `references/git-commands.md` §3，以该处为准，本文不复述**
+     （同一套 `--cached` / `HEAD` 基准在不同模式下会漏检或误报，四种模式各不一样）。
      未跟踪文件没有 diff，需在 Read 时一并检查。
    - 再读取差异，理解变更内容。
    - 代码变更：归纳逻辑意图与影响面；检查项目测试/构建入口（README、Makefile、package.json、
@@ -269,20 +269,21 @@ BREAKING CHANGE: 原字符串返回值改为 AuthResult 对象，调用方需同
 
 用户确认后，按确认的提交模式执行（三条主命令与陷阱说明见 `references/git-commands.md` §1）。
 
-**提交前核对每轮必做**——在暂存完成之后、`git commit` 之前执行，步骤见 `references/git-commands.md` §3：
-`git commit --dry-run --porcelain`（过滤 `^\?\?|^ [MADR]`）核对**将要入库的文件集**，空即 nothing to commit；
-空白检查**按模式选基准**（全量 `git diff HEAD --check` / 仅暂存区 `git diff --cached --check` /
-指定文件 `git diff HEAD --check -- <路径...>`，用错基准会漏检或误报）；
-核对即将传给 `-m` 的**提交信息字符串**（COMMIT-001 / COMMIT-010）；项目有 hook 就先单独跑一次。
+**提交前核对每轮必做**——在暂存完成之后、`git commit` 之前执行。**命令与按模式的差异一律以
+`references/git-commands.md` §3 为准，本文不复述**（该文件开头已声明两者冲突时以它为准）。核对要做四件事：
+
+1. **将要入库的文件集**与用户确认范围一致（输出为空即 nothing to commit）
+2. **空白错误**（按提交模式选基准；选错会漏检或误报）
+3. 即将传给 `-m` 的**提交信息字符串**（COMMIT-001 / COMMIT-010）
+4. 项目若配置了 hook，先单独跑一次，避免 `git commit` 中途被打断
+
 **能在提交前发现的错误必须在提交前发现**，不要靠事后 amend 返工。
+> 复述命令是这套流程已经踩过的坑：`SKILL.md` 曾把 §3 的两种形态压成一条无 pathspec 的命令，导致指定文件模式下
+> 把「只改工作区未 add」的文件误判为「nothing to commit」。**只写要做什么，不写怎么做。**
 
-> **为什么文件集用 `--dry-run` 而不是 `git diff --cached`**：指定文件模式 `git commit -- <路径...>` 提交的是
-> **工作区内容**，而 `--cached` 列的是索引——会误报范围外文件、也会漏掉「只改了工作区没 add」的文件。
-> `--dry-run` 走真实提交逻辑，三种模式都对，且不触发 hook。
-
-提交后**仍有两项无法前移**（§3.1）：`git log -1 --format=%B` 核对最终落库信息（`commit-msg` hook 能在
-`-m` 固定之后改写它）、`git show --stat --oneline HEAD` 复核实际范围（`pre-commit` hook 能改写文件并重新 `add`）。
-两者均已实测。出现 `Co-Authored-By` 等作者注脚必须删除后重新提交；`git commit` 非零退出时**不得报告成功**。
+提交后**仍有两项无法前移**，命令同样见 §3.1：核对最终落库信息（`commit-msg` hook 能在 `-m` 固定之后改写它）、
+复核实际提交范围（`pre-commit` hook 能改写文件并重新 `add`）。两者均已实测。
+出现 `Co-Authored-By` 等作者注脚必须删除后重新提交；`git commit` 非零退出时**不得报告成功**。
 
 提交完成后报告结果（commit hash、分支名、提交信息摘要）。
 
