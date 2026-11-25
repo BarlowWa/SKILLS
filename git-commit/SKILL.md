@@ -39,7 +39,7 @@ description: 当用户要求提交代码、配置或文档、commit、生成 com
 代码审查 agent 始终同时加载 `code-rules` / `test-review` / `test-author` / `arch-review` / `db-rules`（见下文该节）。
 
 
-1. **检查状态**：运行 `git status`、`git diff --stat`、`git diff HEAD --check`（无 HEAD 时用 `git diff --cached --check`），了解变更概览并检查空白错误
+1. **检查状态**：运行 `git status`、`git diff --stat`，了解变更概览（空白检查在步骤 2 按模式执行，不要在此处用不带 pathspec 的 `git diff HEAD --check` 替代——它在仅暂存区模式下会被范围外改动污染）
 2. **分析差异**：先确定提交范围与模式（三选一），后续分析、审查、提交使用**同一范围**：
 
    | 模式 | 范围 | 审查命令 |
@@ -270,13 +270,19 @@ BREAKING CHANGE: 原字符串返回值改为 AuthResult 对象，调用方需同
 用户确认后，按确认的提交模式执行（三条主命令与陷阱说明见 `references/git-commands.md` §1）。
 
 **提交前核对每轮必做**——在暂存完成之后、`git commit` 之前执行，步骤见 `references/git-commands.md` §3：
-`git diff --cached --name-status` 核对**将要入库的文件集**（等价于事后的 `git show --stat`，但此时还没写提交对象，
-不符只需 `git reset -- <路径>` 而不必 amend）、`git diff --cached --check` 查空白错误、核对即将传给 `-m` 的
-**提交信息字符串**（COMMIT-001 / COMMIT-010）。**能在提交前发现的错误必须在提交前发现**，不要靠事后 amend 返工。
+`git commit --dry-run --porcelain`（过滤 `^\?\?|^ [MADR]`）核对**将要入库的文件集**，空即 nothing to commit；
+空白检查**按模式选基准**（全量 `git diff HEAD --check` / 仅暂存区 `git diff --cached --check` /
+指定文件 `git diff HEAD --check -- <路径...>`，用错基准会漏检或误报）；
+核对即将传给 `-m` 的**提交信息字符串**（COMMIT-001 / COMMIT-010）；项目有 hook 就先单独跑一次。
+**能在提交前发现的错误必须在提交前发现**，不要靠事后 amend 返工。
 
-提交后**只剩一项无法前移的核对**：`git log -1 --format=%B` 核对最终落库信息（`commit-msg` /
-`prepare-commit-msg` hook 能在 `-m` 固定之后改写它，已实测；`git show --stat` 不显示 footer，不能替代这一步）。
-出现 `Co-Authored-By` 等作者注脚必须删除后重新提交；`git commit` 非零退出时**不得报告成功**。
+> **为什么文件集用 `--dry-run` 而不是 `git diff --cached`**：指定文件模式 `git commit -- <路径...>` 提交的是
+> **工作区内容**，而 `--cached` 列的是索引——会误报范围外文件、也会漏掉「只改了工作区没 add」的文件。
+> `--dry-run` 走真实提交逻辑，三种模式都对，且不触发 hook。
+
+提交后**仍有两项无法前移**（§3.1）：`git log -1 --format=%B` 核对最终落库信息（`commit-msg` hook 能在
+`-m` 固定之后改写它）、`git show --stat --oneline HEAD` 复核实际范围（`pre-commit` hook 能改写文件并重新 `add`）。
+两者均已实测。出现 `Co-Authored-By` 等作者注脚必须删除后重新提交；`git commit` 非零退出时**不得报告成功**。
 
 提交完成后报告结果（commit hash、分支名、提交信息摘要）。
 
