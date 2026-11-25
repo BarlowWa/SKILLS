@@ -48,7 +48,9 @@
   > 为什么：调用方对「空」与「无」的判空分支几乎从未写全，返回 null 集合是把 NPE 推给每个调用方。
   > 边界：确实需要表达「没有结果」时返回 `Optional`（返回值侧）或抛出契约声明的异常，不要用 null。
 
-- **JAVA-NULL-004**（warning）：公共方法的非空参数用 `Objects.requireNonNull(arg, "arg")` 在入口快速失败；对数组/集合批量校验用 `List.copyOf`（顺带复制与判空）。
+- **JAVA-NULL-004**（warning）：公共方法的非空参数用 `Objects.requireNonNull(arg, "arg")` 在入口快速失败（Java 7+）；对**集合**批量校验用 `List.copyOf`（Java 10+，顺带复制与判空）；**数组不能直接交给 `List.copyOf`**——它的参数是 `Collection<? extends E>`，`List.copyOf(int[])` / `List.copyOf(String[])` 均编译失败（实测 JDK 25：`需要: Collection<? extends E>`）。数组按元素类型分开处理：
+  - **基本类型数组**（`int[]` / `long[]` …）：`Arrays.stream(arr).boxed().toList()`（Java 16+；较早版本用 `.boxed().collect(Collectors.toList())`）——实测得到 `[1, 2]`。注意 `Arrays.asList(int[])` 不展开，见 JAVA-COLL-002。
+  - **引用类型数组**（`String[]` …）：`List.of(arr)`（Java 9+，不可变，元素含 null 时抛 NPE）或 `Arrays.asList(arr)`（定长，可 `set` 不可增删）。
   > 为什么：失败点离错误源头越近，定位成本越低；`requireNonNull` 的消息会进入 NPE 的详细消息（JEP 358 起的 helpful NPE 对显式消息同样保留）。
 
 ## EQ：相等性与契约
@@ -60,7 +62,7 @@
   > 检测：Error Prone `EqualsIncompatibleType` / `MissingOverride`（按所用版本核对）。
 
 - **JAVA-EQ-002**（blocker）：禁止用 `==` 比较 `String`、装箱类型（`Integer` / `Long` / `Double` 等）、数组或任意不可保证同一实例的对象；引用比较只允许枚举常量与显式的对象同一性判断。
-  > 为什么：`Integer` 的 `-128..127` 有缓存，`127 == 127` 为 true、`1000 == 1000` 为 false（实测）——这类缺陷只在特定取值下复现。
+  > 为什么：`Integer` 的 `-128..127` 有缓存，实测 `Integer a = 127, b = 127; a == b` 为 true，`Integer a = 1000, b = 1000; a == b` 为 false——这类缺陷只在特定取值下复现。注意缓存只作用于**装箱类型**：两个 `int` 字面量比较恒为 true（`127 == 127`、`1000 == 1000` 都成立），引用比较的问题只在 `Integer` / `Long` 等上出现。
   > 做法：`Objects.equals(a, b)`（null 安全）/ `a.equals(b)`；枚举用 `==`；数组用 `Arrays.equals` / `Objects.deepEquals`。
 
 - **JAVA-EQ-003**（blocker）：数组字段的 `equals` / `hashCode` 必须用 `Arrays.equals` / `Arrays.hashCode`（若按元素语义比较）；禁止用 `Objects.hash(基本类型数组)`（`int[]` / `long[]` 等不会被可变参数展开，走 `Object.hashCode` 的恒等哈希，实测与 `Arrays.hashCode` 结果不同）。
@@ -120,7 +122,7 @@
   > 实测：`"abc".replaceAll("b", "$")` 抛 `IllegalArgumentException: Illegal group reference`；`\` 则把用户文本变成转义序列。
   > 同理，外部可控的**正则**本身就是注入面：字面量匹配用 `Pattern.quote`。
 
-- **JAVA-STR-005**（warning）：`String.split(regex)` 会丢弃尾部空串（实测 `"a,b,,".split(",")` 得到 `[a, b]`）；需要保留时用 `split(regex, -1)`。`split(".")` 按字符而非点号切分，需转义为 `"\."`。
+- **JAVA-STR-005**（warning）：`String.split(regex)` 会丢弃尾部空串（实测 `"a,b,,".split(",")` 得到 `[a, b]`）；需要保留时用 `split(regex, -1)`。`split(".")` 按字符而非点号切分，需转义为 `"\\."`（Java 字符串字面量里再转义一次；直接写 `"\."` 编译失败，实测 JDK 25 报 `非法转义符`）。
   > 为什么：CSV 字段、路径分段等场景丢尾部空列会造成解析错位。
 
 - **JAVA-STR-006**（warning）：循环内拼接字符串必须用 `StringBuilder`（或 `String.join` / `Collectors.joining`）；`+` 只允许用于非循环的少量拼接与常量表达式。
@@ -283,7 +285,7 @@
 
 通用豁免（测试/基准/SQL/架构，按语言）见 `code-rules/SKILL.md`『豁免』。以下是 Java 特有条目：
 
-- **测试/基准**：`src/test/`、`src/testFixtures/`、`*Test.java`、`*Tests.java`、`*IT.java` 用例设计使用 `test-author`、质量审查使用 `test-review`；JMH（`src/jmh/`、`@Benchmark`）豁免本文全部规则。
+- **测试/基准**：`src/test/`、`src/testFixtures/`、`*Test.java`、`*Tests.java`、`*IT.java` 用例设计使用 `test-author`、质量审查使用 `test-review`；JMH（`src/jmh/`、`@Benchmark`）只豁免本文的**语言规则**，`G-SECRET` / `G-CMDINJ` 仍适用。
 - **`module-info.java`**：只声明模块导出与依赖，不应用本文件的编码规则；其导出面归 `arch-review` 判定。
 - **`package-info.java`**：只放包级 Javadoc 与包级注解，不适用编码规则。
 - **Lombok / 注解处理器生成的代码**：规则作用于源文件（注解、字段、getter 是否该生成的判断按源码），生成产物本身不在审查面；但 `@Data` 会生成 `equals`/`hashCode`，用于可变实体或含数组字段的类型时按 JAVA-EQ-003/005 在源文件层判定。

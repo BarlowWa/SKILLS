@@ -1,6 +1,6 @@
 ---
 name: code-rules
-description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源码时使用（.h/.hpp/.cpp/.cc/.cxx/.hh/.hxx/.ipp/.inl/.tpp/.cppm/.rs/.java/.py/.pyi）。提供强制性编码规范：通用基线（安全、资源、复杂度、日志）加按语言加载的专属规则（内存与所有权、命名、OOP、多线程、错误处理、现代惯用法、禁用模式）。当用户创建、修改或要求审查源码时激活。测试与基准文件不适用本技能，按『豁免』处理；SQL 由 db-rules 负责。
+description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源码时使用（.h/.hpp/.cpp/.cc/.cxx/.hh/.hxx/.ipp/.inl/.tpp/.cppm/.rs/.java/.py/.pyi）。提供强制性编码规范：通用基线（安全、资源、复杂度、日志）加按语言加载的专属规则（内存与所有权、命名、OOP、多线程、错误处理、现代惯用法、禁用模式）。当用户创建、修改或要求审查源码时激活。测试与基准文件不适用本技能的语言规则（`G-SECRET` / `G-CMDINJ` 除外），按『豁免』处理；SQL 由 db-rules 负责。
 ---
 
 # 编码规范强制执行
@@ -101,15 +101,18 @@ description: 在编写、编辑、审查或重构 C++ / Rust / Java / Python 源
 | 语言 | 豁免范围 | 由谁负责 |
 | ---- | -------- | -------- |
 | C++ | `tests/`、`test/`、`unittest/`、`*_test.*`、`*_unittest.*` | `test-author`（设计）/ `test-review`（审查） |
-| C++ | `*_bench.cpp`、`bench/`、`benchmark/` 基准 | 全部豁免 |
+| C++ | `*_bench.cpp`、`bench/`、`benchmark/` 基准 | 豁免本文语言规则（两条基线仍适用） |
+| Java | `src/jmh/`、`@Benchmark`（JMH）基准 | 同上 |
+| Python | `benchmarks/`、`asv.conf.json` 基准 | 同上 |
 | Rust | `tests/`、`benches/`；`src/` 内 `#[cfg(test)]` 模块 | `test-author`（设计）/ `test-review`（审查） |
 | Java | `src/test/`、`src/testFixtures/`、`*Test.java`、`*Tests.java`、`*IT.java` | 同上 |
 | Python | `tests/`、`test_*.py`、`*_test.py`、`conftest.py` | 同上 |
 | 全部 | SQL / DDL / migration（`.sql`）不在本技能范围 | `db-rules` |
 | 全部 | 模块依赖、分层、循环依赖、API/ABI 等架构级问题 | `arch-review`（C++ / Rust / Java / Python 证据均已就绪） |
 
-- 测试文件**豁免本技能全部规则**，由 `test-author`（设计）/ `test-review`（审查）负责；对应语言参考未就绪时，报告须写「未加载语言专属细化/执行证据：<lang>」，不得判为「通过」。
-- 基准文件同样豁免 code-rules：`test-author` 不适用；`test-review` **仅保留执行链判据**（必须真的被构建并注册）。
+- 测试文件**豁免本技能的语言规则**，由 `test-author`（设计）/ `test-review`（审查）负责；对应语言参考未就绪时，报告须写「未加载语言专属细化/执行证据：<lang>」，不得判为「通过」。
+- 基准文件同样只豁免**语言规则**：`test-author` 不适用；`test-review` **仅保留执行链判据**（必须真的被构建并注册）。
+  > **测试与基准都不豁免的两条**：`G-SECRET` 与 `G-CMDINJ` 同样适用——`test-review` 没有密钥/注入类判据，测试夹具里的硬编码真实凭据、`shell=True` 拼接用户输入无人兜底。这两条按 code-rules 报，级别不变（blocker）。
 - 与 C 遗留库互操作时，C++ 文件可按 `references/cpp.md` 的「豁免」条款放宽，并在使用处注释说明。
 - **冲突一律取更严者**：通用基线与语言文件、或不同规则来源冲突时，取更严格的级别与要求，禁止让较松的来源静默降级。
 

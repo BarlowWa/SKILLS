@@ -102,7 +102,7 @@
 
 ## 六、本语言特有豁免
 
-- 基准：`benches/`、criterion、nightly `#[bench]` 豁免本技能**全部**规则，仅保留 EXEC-001/EXEC-002——必须真的被构建并注册：`cargo bench --no-run`、`cargo test --benches`（官方文档：cargo-test — --benches）。`#[bench]` 仅 nightly；stable 常用 criterion 且通常 `harness = false`，其「注册」由 bench 目标的构建/运行证明。
+- 基准：`benches/`、criterion、nightly `#[bench]` 豁免本技能的**形态类与覆盖类判据**（ORG/MOCK/DET/ASRT/COV/THR/TPERF），仅保留 EXEC-001/EXEC-002——必须真的被构建并注册：`cargo bench --no-run`、`cargo test --benches`（官方文档：cargo-test — --benches）。`#[bench]` 仅 nightly；stable 常用 criterion 且通常 `harness = false`，其「注册」由 bench 目标的构建/运行证明。
 - 属性测试与 fuzz（proptest/quickcheck/cargo-fuzz）不在本技能范围；如需覆盖，显式标注「未覆盖」而非记通过。
 - 可选工具：`cargo llvm-cov`、`cargo tarpaulin`、`cargo nextest`、`miri`、`loom`、`rstest`、`serial_test`、`trybuild` 均为**可选**，不是 Cargo 内置能力；引用其输出时须注明工具与版本。
 - 私有可见性：`#[cfg(test)] mod tests` 访问同模块私有项是 Rust 既有惯例，不按 ASRT-006 后门处理；但**断言内部缓存/实现细节**仍违反 ASRT-006，仅为可见性放宽的 `#[cfg(test)] pub(crate)` 属分期整改。

@@ -37,7 +37,8 @@
 ## 二、跳过形态词表（EXEC-003 / EXEC-005）
 
 - `@Disabled` / `@Disabled("理由")`：方法级或类级；**类级 `@Disabled` 会连带跳过整个类**。实测报告形态：类级无理由时 `<skipped message="class org.jsoup.integration.UrlConnectTest is @Disabled"/>`；方法级无理由时 message 只含方法签名（实测 `public void ...XmlTreeBuilderTest.testSupplyPa...`）。message 里没有业务理由 ≠ 不需要理由——实测 jsoup 5 处 `@Disabled` 中 **4 处**有行尾注释说明、**1 处完全裸写**（`XmlTreeBuilderTest.java:65`，上下 5 行无任何注释）。**不要假设 `@Disabled` 都有解释可读**：裸 `@Disabled` 按「无理由跳过」处理并回读用例体判断其依赖（样本中该用例访问外部 URL，理由可从代码推断，但注释机制上仍属缺失）。
-- `@DisabledIf` / `@EnabledIf`（JUnit 5.7+ 内置的 `@EnabledIfSystemProperty`、`@EnabledIfEnvironmentVariable`、`@EnabledOnOs`、`@EnabledOnJre`、`@EnabledIfBuildTool` 等）：条件不满足时静默跳过；跳过原因在报告 `<skipped message>` 中给出表达式，但**业务理由仍需人工核对**。
+- `@DisabledIf` / `@EnabledIf`（JUnit 5.7+ 内置的 `@EnabledIfSystemProperty`、`@EnabledIfEnvironmentVariable`、`@EnabledOnOs`、`@EnabledOnJre`、`@EnabledForJreRange`，以及后续版本追加的 `@EnabledInNativeImage` 等）：条件不满足时静默跳过；跳过原因在报告 `<skipped message>` 中给出表达式，但**业务理由仍需人工核对**。
+  > **不存在 `@EnabledIfBuildTool`**——`org.junit.jupiter.api.condition` 包里没有任何按构建工具判定的注解（按 JUnit 6.1.3 包文档核对）。要按 Maven/Gradle 区分，只能自己用 `@EnabledIf("<全限定的静态判定方法>")` 或实现 `ExecutionCondition`，此时跳过原因由自研逻辑决定，更需人工核对。
 - `@Tag("slow")` + POM 中 `<excludedGroups>` / `<groups>` 或 Gradle `useJUnitPlatform { excludeTags("slow") }`：被排除的标签在报告里**完全不出现**（不是 skipped），与「用例不存在」无法区分——必须读 POM 的标签过滤配置。
 - `Assumptions.assumeTrue(...)` / `assumeFalse` / `assumingThat`：不满足时抛 `TestAbortedException`，JUnit 5 将其记为 **aborted/skipped**（官方文档：Assumptions），比 guard+return 好——它在报告里留痕。判据：只要出现在报告 `skipped` 计数里，属于「机器可见的跳过」，按 EXEC-003 核对理由与另一环境的覆盖；不满足条件就 `return` 的 guard 才是静默形态。
 - JUnit 4：`@Ignore`（可带理由）、`assumeTrue`（org.junit.Assume）、`@Test(expected=...)` 不是跳过但会掩盖错误（见第三节）。
@@ -85,7 +86,7 @@
 
 ## 五、本语言特有豁免
 
-- **JMH 基准**（`src/jmh/`、`@Benchmark`）：豁免本技能全部规则，仅保留 EXEC-001/EXEC-002 的工程性判据——基准必须真的被构建并注册（以项目实际的 JMH 运行任务为准：JMH 通常只在显式 profile/插件下编译，未被 CI 触发的 profile 需记录为「未验证」）。
+- **JMH 基准**（`src/jmh/`、`@Benchmark`）：豁免本技能的**形态类与覆盖类判据**（ORG/MOCK/DET/ASRT/COV/THR/TPERF），仅保留 EXEC-001/EXEC-002 的工程性判据——基准必须真的被构建并注册（以项目实际的 JMH 运行任务为准：JMH 通常只在显式 profile/插件下编译，未被 CI 触发的 profile 需记录为「未验证」）。
 - 属性测试 / fuzz（jqwik、jqf、fuzz4all 等）不在本技能范围；如需覆盖，显式标注「未覆盖」而非记通过。
 - JUnit 4（Vintage）遗留项目：按所用引擎与版本核对执行面；`@Ignore` 的正当理由判定同 `@Disabled`。
 - 可选工具（JaCoCo、PIT、Testcontainers、Mockito inline）均为第三方能力；引用其输出时注明工具与版本。Testcontainers 依赖本机 Docker，Docker 不可用时记「未能判定（缺运行环境）」。

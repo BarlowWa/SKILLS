@@ -65,7 +65,7 @@
 - `IDEM-001`（blocker，DB2 写法）：`CREATE TABLE ... IF NOT EXISTS` 在 DB2 LUW 的支持**随版本不同**（自部分版本起支持，**务必按所用版本核对**，不要默认可直接使用）。等价幂等写法：先查 `SYSCAT.TABLES`（如 `SELECT COUNT(*) FROM SYSCAT.TABLES WHERE TABSCHEMA = '模式名' AND TABNAME = '表名'`）判断后再 `CREATE`；或在存储过程/脚本中用 `DECLARE CONTINUE HANDLER FOR SQLSTATE '42710'`（对象已存在）等异常处理器包装。
 - `DML-004`（blocker，DB2 写法）：限制返回行数用 `FETCH FIRST n ROWS ONLY`（`LIMIT` 在 DB2 不适用）。
 - `TYPE-004`（blocker，DB2 写法）：金额字段用 `DECIMAL(p, s)` / `NUMERIC(p, s)`，禁用 `FLOAT` / `DOUBLE` / `REAL`。
-- `TXN-002`（blocker，DB2 写法）：`DELETE` 必须带 `WHERE`（整体删除须经 TXN-003 行数确认 + TXN-004 确认机制放行；`DELETE` 可由事务回滚）。`TRUNCATE` 无 `WHERE` 语法，只按 TXN-004 的确认机制判定（备份 / 重命名过渡）——**DB2 的 `TRUNCATE` 隐式提交、不可回滚，事务包裹不构成放行依据**（事务性 TRUNCATE 仅在 PostgreSQL / SQL Server 有效）。
+- `TXN-002`（blocker，DB2 写法）：`DELETE` 必须带 `WHERE`（整体删除须经 TXN-003 行数确认 + TXN-004 确认机制放行；`DELETE` 可由事务回滚）。`TRUNCATE` 无 `WHERE` 语法，只按 TXN-004 的确认机制判定（备份 / 重命名过渡）——**DB2 的 `TRUNCATE ... IMMEDIATE` 不可回滚，事务包裹不构成放行依据**（Db2 9.7–11.5 的 `IMMEDIATE` 是必需关键字；11.5.2+ 列组织表省略 `IMMEDIATE` 才可被 `ROLLBACK` 撤销。事务性 TRUNCATE 在 PostgreSQL / SQL Server 上无条件成立）。
 
 ## 常见错误速查
 
@@ -89,5 +89,5 @@
 - [ ] 建表幂等写法已按所用 DB2 版本核对 `IF NOT EXISTS` 支持，或改用字典视图 / 异常处理器（IDEM-001）
 - [ ] 限定行数用 `FETCH FIRST n ROWS ONLY`（DML-004）
 - [ ] 金额字段用 `DECIMAL`，未用浮点类型（TYPE-004）
-- [ ] `DELETE` 带 `WHERE`；`TRUNCATE` 经 TXN-004 确认机制（备份 / 重命名过渡；DB2 上事务包裹无效）（TXN-002）
+- [ ] `DELETE` 带 `WHERE`；`TRUNCATE` 经 TXN-004 确认机制（备份 / 重命名过渡；带 `IMMEDIATE` 的 `TRUNCATE` 上事务包裹无效）（TXN-002）
 - [ ] Oracle→DB2 移植场景才勾选 PROC-006 等「移植专用」条目

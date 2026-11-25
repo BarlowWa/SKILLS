@@ -241,7 +241,7 @@
   > 实测：`random.random()` 与 `secrets.token_hex(4)` 均可用，但前者是 Mersenne Twister，可预测。
   > 检测：ruff `S311`（suspicious-non-cryptographic-random-usage）。
 
-- **PY-SEC-007**（blocker）：对外 HTTP 请求必须处于有超时状态：`requests` 的 `timeout` 默认 `None`（无限等待，实测签名默认值），必须显式设置；`httpx` 默认 5 秒（实测 `DEFAULT_TIMEOUT_CONFIG = Timeout(timeout=5.0)`），不得显式改为 `timeout=None` 关闭超时。TLS 校验不得关闭（`verify=False` / `verify=ssl.CERT_NONE`）。
+- **PY-SEC-007**（blocker）：对外 HTTP 请求必须处于有超时状态：`requests` 的 `timeout` 默认 `None`（无限等待，实测 `Session.request` 签名默认值），必须显式设置；`httpx` 默认 5 秒（实测 `httpx.Client.__init__` 的 `timeout` 默认 `Timeout(timeout=5.0)`），不得显式改为 `timeout=None` 关闭超时。`httpx.DEFAULT_TIMEOUT_CONFIG` 这个常量**不在顶层命名空间**（实测 0.28.1 `hasattr(httpx, "DEFAULT_TIMEOUT_CONFIG")` 为 False，符号在 `httpx._config`，属私有路径），核对默认值请读 `httpx.Client` 构造函数签名而不是引用该常量。TLS 校验不得关闭（`verify=False` / `verify=ssl.CERT_NONE`）。
   > 检测：ruff `S501`（request-with-no-cert-validation）覆盖 `verify=False`，不覆盖超时缺失。
 
 - **PY-SEC-008**（blocker）：不可信 XML 用 `defusedxml`（或显式禁用外部实体/DTD）；标准库 `xml.etree.ElementTree` 的实体处理限制随版本变化，不能默认视为安全。
@@ -255,8 +255,8 @@
   > 实测：`os.path.join(r"C:\base", r"C:\Windows")` 得到 `C:\Windows`；`Path(r"C:\base") / Path(r"C:\Windows")` 同样替换基路径；`C:\base\..\etc` 解析为 `C:\etc`，`is_relative_to(base)` 为 False。
   > 为什么：仅字符串拼接或只 `normalize()` 不解析符号链接，仍可被绕过。
 
-- **PY-PATH-002**（blocker）：解压不可信归档前必须防 Zip Slip / Tar Slip：逐个成员校验解析后的目标路径仍在目标目录内；`tarfile.extractall` 在 3.12+ 用 `filter="data"`（或等效白名单），`zipfile` 按成员名校验。
-  > 文档：Python 3.12 起 `tarfile` 提供 extraction filters；默认行为随版本收紧，不能假设旧版本的默认值安全。
+- **PY-PATH-002**（blocker）：解压不可信归档前必须防 Zip Slip / Tar Slip：逐个成员校验解析后的目标路径仍在目标目录内；`tarfile.extractall` 在 3.12+ 用 `filter="data"`（或等效白名单），**3.14 起 `filter` 默认已等价于 `data`**（实测 3.14.6：不传 `filter` 时 `../evil.txt` 被 `OutsideDestinationError` 拦下），但 3.12 / 3.13 不传仍是旧行为，跨版本代码必须显式传；`zipfile` 按成员名校验。
+  > 文档：Python 3.12 起 `tarfile` 提供 extraction filters（3.12 / 3.13 需显式传 `filter=`），3.14 起默认值已等价于 `data`；`zipfile` 至今没有等价的默认防护。不能假设旧版本的默认值安全。
 
 ## TYPE：类型注解
 
@@ -328,7 +328,7 @@
 
 通用豁免（测试/基准/SQL/架构）见 `code-rules/SKILL.md`『豁免』。以下是 Python 特有条目：
 
-- **测试/基准**：`tests/`、`test_*.py`、`*_test.py`、`conftest.py` 的用例设计使用 `test-author`、质量审查使用 `test-review`；`benchmarks/`、`asv.conf.json` 基准豁免本文全部规则。
+- **测试/基准**：`tests/`、`test_*.py`、`*_test.py`、`conftest.py` 的用例设计使用 `test-author`、质量审查使用 `test-review`；`benchmarks/`、`asv.conf.json` 基准只豁免本文的**语言规则**，`G-SECRET` / `G-CMDINJ` 仍适用。
 - **`__init__.py` 的受控重导出**：有显式 `__all__` 且由测试核对的通配重导出，不按 `PY-IMPORT-001` 判；包级公开面本身归 `arch-review` ARCH-PY-004。
 - **`.pyi` 存根**：只应用 TYPE / NAME 规则；RES / EXC / CONC / LOG 等运行时规则不适用（存根不执行）。
 - **`if TYPE_CHECKING:` 块内导入**：不受 `PY-IMPORT-003` 的「延迟导入需注释」约束（仅类型检查，无运行期语义）。

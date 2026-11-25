@@ -151,7 +151,7 @@
 - **RUST-DOC-001**（blocker）：公开项必须有 `///` 文档；可能失败写 `# Errors`，可能 panic 写 `# Panics`，`unsafe fn` 写 `# Safety`。
   > 为什么：调用方无法预知失败、panic 与安全前提，只能读实现。
   > 检测：`missing_safety_doc`（默认 warn，直接生效）；`missing_errors_doc` / `missing_panics_doc` 属 pedantic，需启用；`missing_docs`（rustc lint，默认 allow，需启用）可机械拦截缺失的公开项文档，但不能替代 `# Errors` / `# Panics` / `# Safety` 段的人工/专 lint 校验。
-  > 触发命令：`missing_docs` 是 rustc lint，用 `-W missing_docs`（或源码里 `#![warn(missing_docs)]` / `#![deny(missing_docs)]`）开启后，`cargo build` / `cargo clippy -- -W missing_docs` 即会报告，**无需** `cargo doc`；不要与 rustdoc 的 `rustdoc::missing_crate_level_docs`（crate 级 `//!` 缺失，仅在 `cargo doc` / `cargo rustdoc` 阶段报）混为一谈（按本机 rustc 1.99.1 `-W help` 核对）。
+  > 触发命令：`missing_docs` 是 rustc lint（默认 allow）。**不能写成 `cargo build -- -W missing_docs`**——`cargo build` 不往 rustc 透传参数，实测 cargo 1.99 报 `error: unexpected argument '-W' found`。三种可行形态：源码里写 `#![warn(missing_docs)]` / `#![deny(missing_docs)]`；或 `RUSTFLAGS="-W missing_docs" cargo build`；或 `cargo clippy -- -W missing_docs`（clippy 后面的 `--` 才透传给 rustc）。均**无需** `cargo doc`；不要与 rustdoc 的 `rustdoc::missing_crate_level_docs`（crate 级 `//!` 缺失，仅在 `cargo doc` / `cargo rustdoc` 阶段报）混为一谈（按本机 rustc 1.99.1 `-W help` 核对）。
   > 依据：API Guidelines C-FAILURE。
   > 去重：unsafe 相关的 `# Safety` 缺失按 RUST-UNSAFE-001 报一次。
 
@@ -266,7 +266,7 @@
   > - 错误吞没审计：`-W clippy::let_underscore_must_use`（→ ERR-002）。
   > - **不要**启用 `-W let-underscore-drop`（rustc lint）：它把 `let _ = <含析构类型>` 直接升为 error，恰好否掉 ERR-002 允许的「显式忽略 + 注释理由」写法与 CONC-003 选项 (b)（`#[allow(clippy::let_underscore_future)] let _ = handle;`），且它是 rustc lint、clippy 命名空间下的 `allow` 管不到它。在核心 `-D warnings`（不开该 lint）下，ERR-002 的 `let _ =` + 理由、CONC-003 的 (a) `mem::drop(handle)` 与 (b) 带 reason 的 `let _ =` 均可编译（rustc 1.99.1 实测）。确需审计「含析构值的 `let _ =`」时，只能人工核对或临时单独开启、并为上述允许写法加 `#[allow(let_underscore_drop)]`（rustc 命名空间）。
   > 以上新增项均在 Clippy lint 列表 / rustc `-W help` 中核实存在，并按本机工具链版本核对可触发；`missing_docs` / `missing_debug_implementations` 是 rustc lint（非 clippy 命名空间），同样用 `-W` 逐条开启。
-  > 测试与基准路径（`tests/`、`benches/`、`#[cfg(test)]`）按 SKILL.md『豁免』不受编码规则约束，`unwrap_used` 等会误伤：须在测试 target 上 `#[allow]` 或在 CI 中分开执行，并把该策略写进仓库说明。基线可按项目裁剪，裁剪须记录理由。
+  > 测试与基准路径（`tests/`、`benches/`、`#[cfg(test)]`）按 SKILL.md『豁免』不受**语言规则**约束（`G-SECRET` / `G-CMDINJ` 仍适用），`unwrap_used` 等会误伤：须在测试 target 上 `#[allow]` 或在 CI 中分开执行，并把该策略写进仓库说明。基线可按项目裁剪，裁剪须记录理由。
   > 工具行为引用自 Clippy lint 列表（分组与默认级别），版本变化时按本机工具链重新核对。
 
 - **RUST-BUILD-002**（warning）：`#[allow(...)]` 必须带理由；禁止无理由的 crate 级 allow。一个 `allow` 属性只能带**一条** `reason`，且必须写在最后（`#[allow(dead_code, reason = "x", unused_variables, reason = "y")]` 是 `error[E0452]: malformed lint attribute input`）。多条 lint 需各自理由时，拆成多个属性：
@@ -326,7 +326,7 @@
 
 ## 本语言专属豁免
 
-- **测试/基准**：`tests/`、`benches/`、`src/` 内 `#[cfg(test)]` 模块按 `code-rules/SKILL.md` 全量豁免，交 `test-author`（设计）/ `test-review`（审查）；`#[bench]` 与基准同样豁免。
+- **测试/基准**：`tests/`、`benches/`、`src/` 内 `#[cfg(test)]` 模块按 `code-rules/SKILL.md`『豁免』只豁免**语言规则**，`G-SECRET` / `G-CMDINJ` 仍适用；用例设计交 `test-author`、质量审查交 `test-review`。`#[bench]` 与基准同样只豁免语言规则。
 - **FFI 模块**：可在 `// SAFETY:` 说明下使用裸指针、`union`、`extern` 声明；UNSAFE-002 的 transmute 禁令不因 FFI 放宽，确需时仍须给出布局/大小证明。
 - **build.rs**：可执行构建期命令、读写 `OUT_DIR`，但仍受 G-SECRET / G-CMDINJ 与 RUST-SEC-001 约束；构建期生成的值不等于运行时密钥。
 - **生成代码（OUT_DIR / bindgen 产物 / proc-macro 展开产物）**：风格类问题（OWN/API/DOC/PERF）只作 warning，不阻塞提交；安全类 blocker 仍须在生成配置、宏的输入写法或调用边界修复。proc-macro 展开出的 `transmute`、`unsafe impl`、`unsafe extern` 同属生成代码，但**宏定义处的输入写法**（`quote!` 模板本身）按源码审查，不受本条豁免。

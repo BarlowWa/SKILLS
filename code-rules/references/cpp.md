@@ -69,7 +69,7 @@
 - **BAN-001**：禁止 `goto`，分支跳转用状态机重构
 - **BAN-002**：禁止 C 风格强转 `(Type)var`，用 `static_cast` / `const_cast` / `reinterpret_cast`（后者严格管控）
 - **BAN-003**：禁止 `NULL` / `0` 表空指针，统一 `nullptr`
-- **BAN-004**：业务接口禁止 `va_list` / `va_arg`，用 `std::format` / 模板参数包替代
+- **BAN-004**：业务接口禁止 `va_list` / `va_arg`，用模板参数包（C++11+）替代；C++20 起优先 `std::format`，C++17 项目用 `{fmt}` 库或 `std::ostringstream`——`std::format` 是 C++20 库特性，C++17 下 `-std=c++17` 编译失败（实测 GCC 15.2：`'format' is not a member of 'std'`）
 - **BAN-005**：禁止函数式宏，常量用 `constexpr`，工具函数用 `inline` / 模板
 - **BAN-006**：业务接口禁止 `void*`——内存原始操作使用 `std::byte*`；闭合类型集用 `std::variant`，开放类型集才谨慎用 `std::any`；模板参数为首选
   > `void*` 抹掉全部类型信息，绕过编译期检查；`std::byte*` 才是裸内存操作的正确类型。C 互操作例外见『豁免』章节。
@@ -78,8 +78,8 @@
 
 ### SEC-A：内存安全
 
-- **SEC-A001**：禁止不安全的 C 字符串函数——`strcpy` / `strcat` / `sprintf` / `gets` / `scanf` 系列。统一使用安全替代：`snprintf` 或直接使用 `std::string` / `std::format`
-  > 缓冲区溢出是 CWE Top 1，此类函数无法限制目标缓冲区长度，是最高频安全漏洞来源。注意：`strcpy_s` / `strcat_s` 属 C11 Annex K 可选项、实际为 MSVC 专属，Linux/GCC 不提供，故不作为跨平台推荐。
+- **SEC-A001**：禁止不安全的 C 字符串函数——`strcpy` / `strcat` / `sprintf` / `gets` / `scanf` 系列。统一使用安全替代：`snprintf` 或直接使用 `std::string`；格式化场景 C++20 用 `std::format`，C++17 用 `{fmt}` 库或 `std::ostringstream`（见 BAN-004）。
+  > 缓冲区溢出是 CWE Top 1，此类函数无法限制目标缓冲区长度，是最高频安全漏洞来源。注意：`strcpy_s` / `strcat_s` 属 C11 Annex K 可选项，**MSVC 与 mingw-w64 都提供，glibc 不提供**（实测 MinGW g++ 15.2.0 可编译链接并正确运行），故只在 Windows 工具链内可作为跨平台推荐；面向 Linux/glibc 的代码仍用 `snprintf` / `std::string`。
 - **SEC-A002**：数组/容器访问优先使用 `.at()`（带边界检查抛异常），使用 `operator[]` 时必须有前置边界验证（如 `if (index < vec.size())`）或通过上下文可证明索引安全
   > 越界访问在安全审计中占比极高，`.at()` 将未定义行为转为可捕获异常。
 - **SEC-A003**：禁止 `alloca` / `_alloca` / VLA（变长数组）——栈空间不可控，恶意输入可导致栈溢出。用 `std::vector` 或 `std::make_unique<T[]>` 替代
@@ -198,7 +198,7 @@
 通用豁免（测试/基准/SQL/架构，按语言）见 `code-rules/SKILL.md`『豁免』。以下是 C++ 特有条目：
 
 - **C 互操作**：与 C 遗留库交互时，裸指针（MEM-003）、返回裸指针（MEM-004）、观测参数裸指针（MEM-005）、`void*`（BAN-006）和 C 风格强转（BAN-002）可例外，需在使用处注释说明 C 互操作需求及风险评估。
-- **测试文件**：`tests/`、`*_test.*`、`*_unittest.*` 的用例设计使用 `test-author`、质量审查使用 `test-review`。测试文件中的 `new`（测试框架宏内部）、断言字面量、全局注册宏等在本文规则下会误报，不应应用本文的任何规则。
-- **基准**：`*_bench.cpp`、`bench/` 豁免本文**全部**规则。
+- **测试文件**：`tests/`、`*_test.*`、`*_unittest.*` 的用例设计使用 `test-author`、质量审查使用 `test-review`。测试文件中的 `new`（测试框架宏内部）、断言字面量、全局注册宏等在本文规则下会误报，不应应用本文的**语言规则**；`G-SECRET` / `G-CMDINJ` 两条基线仍适用（见 `code-rules/SKILL.md`『豁免』）。
+- **基准**：`*_bench.cpp`、`bench/` 豁免本文**语言规则**（`G-SECRET` / `G-CMDINJ` 仍适用）。
 - 其余规则无一例外。
 

@@ -77,17 +77,17 @@ pytest 9.2 的 `ExitCode`（源码 `_pytest/config/__init__.py`）：
 
 ### 2.3 覆盖率与「跑过」（EXEC-005）
 
-- 覆盖率工具（coverage.py / pytest-cov）只证明行被执行，不证明断言存在或断言有区分度；`coverage` 100% 仍可能是空断言/镜像实现。覆盖率报告必须与 ASRT/COST 判据结合看。
+- 覆盖率工具（coverage.py / pytest-cov）只证明行被执行，不证明断言存在或断言有区分度；`coverage` 100% 仍可能是空断言/镜像实现。覆盖率报告必须与 ASRT 各判据（尤其 ASRT-001 空断言、ASRT-002 平凡断言、ASRT-005 镜像实现）结合看。
 - `--lf` / `--ff` / `-k` 的通过不能证明全量套件通过；报告必须写明本次运行的选择器。
 
 ## 三、对账（EXEC-006）
 
 - **参数化展开**：`@pytest.mark.parametrize` 的每个参数行是独立用例；多个 `parametrize` 叠乘（实测 2×2 = 4，另有 3 个单参数，共 7）。源码声明数 ≠ 收集数是**正常**，差额必须能由参数行数/组合数解释。
 - **fixture 参数化**：`@pytest.fixture(params=[...])` 会让依赖它的每个用例按参数展开；对账时把 fixture 的参数维度乘进去。
-- **测试 id**：默认 id 是参数值的字符串化，重复值会带 `0/1` 后缀（实测 `[x-1]`、`[y-1]` 等）；不要用 id 直接推断参数值，回读源码或 `--collect-only` 的完整路径。
+- **测试 id**：默认 id 是参数值的字符串化，**重复值会追加 `_0` / `_1` 下标后缀**（实测 `@parametrize("x", [1, 1])` 得到 `test_dup[1_0]`、`test_dup[1_1]`）；不要用 id 直接推断参数值，回读源码或 `--collect-only` 的完整路径。
 - **类/方法**：`TestClass::test_method` 是一级；类被 `__init__` 拦截时不收集（实测），文件存在≠用例存在。
 - **模块级跳过**：`pytest.importorskip` 在模块顶层会让整个文件的用例消失/记 skip；对账时必须与「文件本来就没有用例」区分。
-- **subTest**：一条 `TestCase` 用例下多个 subTest 在 JUnit XML 中仍是一条 `<testcase>`，但在终端汇总里可能单独计数（实测 `3 subtests passed`）；不要把「subtest 数」加到 tests 总数上。
+- **subTest**：一条 `TestCase` 用例下多个 subTest 在 JUnit XML 里仍是**一条 `<testcase>`**，但 `<testsuite>` 的**四个计数属性都会按 subTest 膨胀**——实测 1 个用例含 4 个 subTest（1 通过 / 1 失败 / 1 错误写法抛异常 / 1 跳过）时，`<testcase>` 计 1，而 `tests="5"`（外层 1 + subTest 4）、`failures="2"`、`skipped="1"`。所以**四个属性都不能直接当用例数用**：对账时必须按 `<testcase>` 节点计数（`grep -o '<testcase' | wc -l`），或先扣掉 subTest 数量；否则「N 条用例里 M 条失败」会被读成「用例数膨胀」。终端汇总会单独给出 `N subtests passed` 与被提升的 `SUBFAILED(...)` 行，可用来交叉核对。
 
 ## 四、假阳性陷阱（定性前必读）
 
@@ -106,7 +106,7 @@ pytest 9.2 的 `ExitCode`（源码 `_pytest/config/__init__.py`）：
 
 ## 五、本语言特有豁免
 
-- **基准**：`benchmarks/`、`asv.conf.json`、pytest-benchmark 的 benchmark 用例豁免本技能全部规则，仅保留 EXEC-001/002 的工程性判据（基准必须真的被收集/执行）。
+- **基准**：`benchmarks/`、`asv.conf.json`、pytest-benchmark 的 benchmark 用例豁免本技能的**形态类与覆盖类判据**（ORG/MOCK/DET/ASRT/COV/THR/TPERF），仅保留 EXEC-001/002 的工程性判据（基准必须真的被收集/执行）。
 - **属性测试 / fuzz**：Hypothesis 等不在本技能范围；未覆盖时显式标注「未覆盖」，不记通过。
 - **网络/浏览器集成测试**：`@pytest.mark.network` 或项目既有标记的用例按集成测试放宽确定性要求，但必须可默认排除，并在报告中说明是否排除。
 - **`conftest.py`**：作为测试基础设施审查；其 hook/fixture 的全局副作用按 DET/EXEC 判，不按产品代码 ORG 规则判。

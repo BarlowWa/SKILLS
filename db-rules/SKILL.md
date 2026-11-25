@@ -103,9 +103,10 @@ description: 在编写、编辑、审查或调试数据库脚本（.sql、DDL、
   - **`DELETE`**：必须包含 `WHERE` 子句。`DELETE FROM table` 无条件删除全表是**严重违规**——除非操作意图确为清空整表，且已经 TXN-003 的 `SELECT` 影响行数确认 + TXN-004 的确认机制（备份 / 事务包裹）放行。`DELETE` 是可回滚的 DML，事务包裹在所有支持事务的库上都有效。
   - **TRUNCATE 没有 `WHERE` 语法**，不与 `DELETE` 适用同一套 `WHERE` 判据；只按 TXN-004 的确认机制判定，并要求注释写明清空整表的意图。
     - **事务包裹对 TRUNCATE 仅在 PostgreSQL / SQL Server 有效**（这两者的 TRUNCATE 可回滚）。
-    - **MySQL / Oracle / DB2 的 TRUNCATE 会隐式提交、不可回滚**——事务包裹**不构成**确认机制，只能用备份 / 重命名过渡等机制。按所用版本核对（历史版本有例外，不得默认可回滚）。
+    - **MySQL / Oracle 的 TRUNCATE 会隐式提交、不可回滚**——事务包裹**不构成**确认机制，只能用备份 / 重命名过渡等机制。
+    - **DB2 不能按「库」一刀切，要按 `IMMEDIATE` 子句判**：Db2 9.7–11.5 的 `TRUNCATE` **`IMMEDIATE` 关键字是必需的**，语义即「立即生效、不可回滚」——带 `IMMEDIATE` 时事务包裹不构成放行依据；Db2 11.5.2 起**列组织表**的 `IMMEDIATE` 变为可选（该增强的 IBM 发布说明标注面向单容器 Db2 Warehouse / IIAS 部署，其它部署按所用版本核对），省略时 `ROLLBACK` 能撤销 truncate（含其后其它 DML），此时事务包裹有效。脚本里看到裸 `TRUNCATE ... IMMEDIATE` 就按不可回滚处理。
 - **TXN-003**：`UPDATE` 涉及关键业务列（金额、状态等）前，必须先 `SELECT` 确认影响行数，或用事务包装以便回滚（不得未经确认直接执行）。
-- **TXN-004**：生产环境脚本禁止直接 `DROP TABLE / TRUNCATE TABLE` 而不经确认机制。确认机制：**备份、重命名过渡**；**事务包裹**只有在目标库对相应语句支持回滚时才构成放行依据——`TRUNCATE` 仅在 **PostgreSQL / SQL Server** 可回滚，**MySQL / Oracle / DB2 的 `TRUNCATE` 隐式提交、不可回滚**，这三者上事务包裹不构成放行依据。`DROP` 的隐式提交行为按所用库与版本核对（MySQL / Oracle 的 DDL 隐式提交，不得依赖回滚）。
+- **TXN-004**：生产环境脚本禁止直接 `DROP TABLE / TRUNCATE TABLE` 而不经确认机制。确认机制：**备份、重命名过渡**；**事务包裹**只有在目标库对相应语句支持回滚时才构成放行依据——`TRUNCATE` 在 **PostgreSQL / SQL Server** 可回滚；**MySQL / Oracle 的 `TRUNCATE` 隐式提交、不可回滚**；**DB2 看 `IMMEDIATE` 子句**（Db2 9.7–11.5 的 `IMMEDIATE` 必需且即「不可回滚」；11.5.2+ 列组织表省略它才可回滚，见 TXN-002）。`DROP` 的隐式提交行为按所用库与版本核对（MySQL / Oracle 的 DDL 隐式提交，不得依赖回滚）。
 
 ### 5. 模式与权限（blocker）
 

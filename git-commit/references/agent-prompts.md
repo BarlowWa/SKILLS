@@ -53,7 +53,7 @@ B=$((A - I))                                                                  # 
      <技能根目录>/test-author/SKILL.md（本次新增/修改用例时加载），各按路由表加载对应 references/<lang>.md
 5. 对代码变更内容进行审查：
    - 生产代码：对照 code-rules 与该语言规则文件逐条检查 blocker 和 warning；语言已识别但无对应规则文件时，只应用 G-xxx 并在报告中标注「未加载语言专属规则：<lang>」
-   - 测试代码：一律对照 test-review 逐条检查测试质量；本次新增/修改用例时再对照 test-author 检查用例设计（测试/基准文件不应用 code-rules 的生产代码规则）；对应语言无测试参考文件时，按 test-author/test-review 的降级路径标注「未加载语言专属细化/执行证据：<lang>」
+   - 测试代码：一律对照 test-review 逐条检查测试质量；本次新增/修改用例时再对照 test-author 检查用例设计（测试/基准文件只对 G-SECRET / G-CMDINJ 两条基线应用 code-rules，其余规则由 test-review / test-author 负责）；对应语言无测试参考文件时，按 test-author/test-review 的降级路径标注「未加载语言专属细化/执行证据：<lang>」
    - 基准测试：code-rules 豁免；test-review 保留执行链判据
    - 数据库脚本：对照 db-rules 检查
    - 涉及模块依赖/分层/目录结构变更：对照 arch-review 检查
@@ -62,10 +62,11 @@ B=$((A - I))                                                                  # 
    给不出证据的降为 warning 或标「未能判定」。warning 至少给 `文件:行` + 一句可核对的事实；修法可选
 7. 仅对 blocker 给出是否阻塞提交的结论；warning 只列建议。**报告每条结论时一并给出其来源技能、原名 ID 与原级别**
    （合并口径见 `<本 skill 目录>/SKILL.md`「跨技能级别换算与去重」；同一问题多技能命中只报一次，取更严者）
-8. 报告末尾追加「结论索引」小节，每条结论（blocker 与 warning 各一行，不多不少）：
+8. 报告末尾追加「结论索引」小节，每条结论各占一行（blocker 与 warning 一视同仁）：
    `- [blocker|warning] <规则ID> <file:line> <一句话>`
    正文中每条结论同样以 `- [blocker] …` / `- [warning] …` 独占一行（复选框 `- [x]` 除外），
-   使「索引 vs 正文」条数可被两侧对账
+   使「索引 vs 正文」条数可被两侧对账。正文每条结论都必须进索引；索引可多于正文（如顺带发现），
+   判据与对账命令见 `<本 skill 目录>/SKILL.md` 步骤 5。
 ```
 
 ## 2. 构建 / 配置 / 脚本审查 agent
@@ -95,10 +96,11 @@ B=$((A - I))                                                                  # 
 5. 输出：每条 blocker 必须附 `文件:行`、问题原文、反证（命令输出 / 文件位置）；给不出证据的降为 warning
    或标「未能判定」。warning 至少给 `文件:行` + 一句可核对的事实
 6. 仅对 blocker 给出是否阻塞提交的结论；warning 只列建议
-7. 报告末尾追加「结论索引」小节，每条结论（blocker 与 warning 各一行，不多不少）：
+7. 报告末尾追加「结论索引」小节，每条结论各占一行（blocker 与 warning 一视同仁）：
    `- [blocker|warning] <检查项编号> <file:line> <一句话>`
    正文中每条结论同样以 `- [blocker] …` / `- [warning] …` 独占一行（复选框 `- [x]` 除外），
-   使「索引 vs 正文」条数可被两侧对账
+   使「索引 vs 正文」条数可被两侧对账。正文每条结论都必须进索引；索引可多于正文（如顺带发现），
+   判据与对账命令见 `<本 skill 目录>/SKILL.md` 步骤 5。
 ```
 
 ## 3. 文档审查 agent
@@ -126,8 +128,9 @@ B=$((A - I))                                                                  # 
 6. 输出报告：每条 blocker 必须附 `文件:行`、原文引用、反证位置或命令输出；
    无法验证的声明标注「未能判定」，不得据此判 blocker
 7. 仅对 blocker 给出是否阻塞提交的结论；warning 只列建议
-8. 报告末尾追加「结论索引」小节，每条结论（blocker 与 warning 各一行，不多不少）：
+8. 报告末尾追加「结论索引」小节，每条结论各占一行（blocker 与 warning 一视同仁）：
    `- [blocker|warning] <DOC-Bx 或 warning> <file:line> <一句话>`（如 `- [blocker] DOC-B2 x.md:9 …`）
    正文中每条结论同样以 `- [blocker] DOC-Bx …` / `- [warning] …` 独占一行（复选框 `- [x]` 除外），
-   使「索引 vs 正文」两侧条数可对账；**规则 ID 写在方括号之后，方括号内只能是 blocker/warning**
+   使「索引 vs 正文」两侧条数可对账；**规则 ID 写在方括号之后，方括号内只能是 blocker/warning**。
+   正文每条结论都必须进索引；索引可多于正文（如顺带发现），判据与对账命令见 `<本 skill 目录>/SKILL.md` 步骤 5
 ```
