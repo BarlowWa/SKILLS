@@ -61,16 +61,21 @@ git commit -m "<提交信息>" -- <路径...>
 
 1. **将要入库的文件集**——用 `git commit --dry-run --porcelain`，过滤掉未跟踪与未暂存项：
    ```bash
-   # 全量 / 仅暂存区
+   # 全量 / 仅暂存区（stderr 必须一并查看，见下）
    git commit --dry-run --porcelain | grep -vE '^\?\?|^ [MADR]'
    # 指定文件（<路径...> 为确认范围内的文件）
    git commit --dry-run --porcelain -- <路径...> | grep -vE '^\?\?|^ [MADR]'
    ```
-   输出与用户确认范围比对；**输出为空即「nothing to commit」**（`--dry-run` 此时退出码为 1）。
-   范围不符时用 `git reset -- <路径>`（或重新 `add`）纠正，不必 amend。
+   输出与用户确认范围比对。**判空前先看 stderr**（不要丢弃它）：
+   - stderr **非空**（如 `error: pathspec 'x' did not match any file(s)`，退出码同样为 1）→ 是**输入错误**
+     （常见于指定文件模式下目标尚未 `git add`），**不是** nothing to commit，先 `git add -- <路径...>` 再重跑。
+   - stderr 为空且过滤后输出为空 → 才是「nothing to commit」。
+   > 两种情形的退出码都是 1、stdout 都是空，**只能靠 stderr 区分**（实测）。
+   范围不符时用 `git reset -- <路径>`（或重新 `add`）纠正，不必 amend。**注意该命令只对全量与仅暂存区模式有效**——
+   指定文件模式的范围由 pathspec 决定，索引里有什么都不影响提交内容。
    > **为什么用 `--dry-run` 而不是 `git diff --cached`**：后者列的是**索引**，而指定文件模式下
    > `git commit -- <路径...>` 提交的是**工作区内容**——`--cached` 会把范围外但已暂存的文件算进来（实测误报），
-   > 也会漏掉「只改了工作区、没 add」的文件。`--dry-run` 走的是真实的提交逻辑，三种模式都正确，且
+   > 也会漏掉「只改了工作区、没 add」的文件。`--dry-run` 走的是真实的提交逻辑，各模式都正确，且
    > **不触发任何 hook**（实测 `pre-commit` / `commit-msg` / `prepare-commit-msg` 均不执行）。
    > 过滤规则的必要性：`--porcelain` 的输出里 `??` 是未跟踪、首列空格的 ` M` 是未暂存，两者都不该计入
    > 「将要入库」。但**指定文件模式例外**：该模式下 `git commit -- <路径...>` 取的是工作区内容，
@@ -82,11 +87,14 @@ git commit -m "<提交信息>" -- <路径...>
    |---|---|---|
    | 全量 | `git diff HEAD --check` | 工作区+索引全部入库，两者都要查 |
    | 仅暂存区 | `git diff --cached --check` | 只查索引；用 `HEAD` 会把范围外的未暂存改动算进来（实测误报） |
-   | 指定文件 | `git diff HEAD --check -- <路径...>` | 提交取工作区内容；用 `--cached` 会漏掉「只改了工作区」的尾随空格（实测漏检） |
-   | 初始提交 | `git diff --cached --check` | 无 `HEAD` 可比 |
+   | 指定文件（非初始提交） | `git diff HEAD --check -- <路径...>` | 提交取工作区内容；用 `--cached` 会漏掉「只改了工作区」的尾随空格（实测漏检） |
+   | 初始提交 + 指定文件 | `git diff --cached --check -- <路径...>` **加** `git diff --check -- <路径...>` | 无 `HEAD` 可比，须分两段查：前者查已暂存部分（且不误报范围外），后者查索引→工作区的增量 |
+   | 初始提交（全量 / 仅暂存区） | `git diff --cached --check` | 全部入库内容都在索引里 |
 
-   > 同一个 `--cached` 在仅暂存区模式**正确**、在指定文件模式**漏检**；反过来 `HEAD` 在指定文件模式正确、
+   > 同一个 `--cached` 在仅暂存区模式**正确**、在非初始提交的指定文件模式**漏检**；反过来 `HEAD` 在指定文件模式正确、
    > 在仅暂存区模式**误报**。两者都已实测，不要当成可以互换的等价写法。命中时退出码非零并打印 `文件:行`。
+   > **「初始提交 + 指定文件」这个组合必须两条一起跑**：只跑 `--cached` 会漏检「add 后又改工作区」的尾随空格
+   > （实测：索引干净报 exit=0，而带空格的内容照样入库）；只跑 `git diff --check` 又会漏掉索引里已有的空格。
 3. **待写入的提交信息字符串**（马上要传给 `-m` 的那段）：按 **COMMIT-010** 确认不含 `Co-Authored-By`
    等作者注脚；按 **COMMIT-001** 确认「标题行不超过 72 字符、使用中文描述、末尾不加句号」。
    > **中文标题不要用 `wc -c` 数字数**——它按字节计，UTF-8 下一个汉字 3 字节，42 字的标题会被数成 82 而误判超长。
@@ -101,9 +109,11 @@ git commit -m "<提交信息>" -- <路径...>
 ### 3.1 提交后核对（无法前移的两项）
 
 - `git log -1 --format=%B` 核对**最终落库**的提交信息（COMMIT-010）。实测：hook 追加 `Co-Authored-By` 时，
-  传入的 `-m` 干净而落库信息被污染。**裸 `git show --stat` 会显示 footer，只有 `--oneline` 形态会把它并进
-  subject 行**——所以不能用 `--oneline` 形态查注脚。出现 `Co-Authored-By` 等作者注脚必须删除后重新提交
-  （项目明确要求 `Signed-off-by` / DCO 时只允许该 trailer）。
+  传入的 `-m` 干净而落库信息被污染。**不要用 `git show --stat --oneline` 或 `%s` 查注脚**：规范的 trailer
+  （前面有空行）在 `--oneline` 下看不出来，但**没有空行的畸形 trailer 会被并进同一行**，`%s` 同样被污染——
+  两种形态都不该拿来当判据。裸 `git show --stat` 会显示 footer，但它把提交信息与 diffstat 混在一起，仍以
+  `%B` 为准。出现 `Co-Authored-By` 等作者注脚必须删除后重新提交（项目明确要求 `Signed-off-by` / DCO 时
+  只允许该 trailer）。
 - `git show --stat --oneline HEAD` 复核**实际提交范围**。实测：`pre-commit` hook 改写文件内容并 `git add` 后，
   提交前索引与最终入库内容不一致，只有本节能看到。范围与确认不一致时立即报告。
 - 指定文件模式下若索引中仍有范围外暂存内容，清理信息必须用
