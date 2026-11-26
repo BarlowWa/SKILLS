@@ -164,7 +164,7 @@ description: 撰写、修改或审查科研与工程项目的说服型材料—�
 
 | 层 | 何时进上下文 | 放什么 | 预算 |
 |---|---|---|---|
-| `SKILL.md` 正文 | 一触发就进，且**跨轮保留**；压缩后按官方规则重挂，**只保留开头约 5,000 tokens** | **每一类体裁都要用的判据** | 官方建议 <500 行；本文件现 185 行 |
+| `SKILL.md` 正文 | 一触发就进，且**跨轮保留**；压缩后按官方规则重挂，**只保留开头约 5,000 tokens** | **每一类体裁都要用的判据** | 官方建议 <500 行（**行数自己在提交前数，不要把这个数写进文件**——它每次改都会过期） |
 | `references/*.md`（含两个横切层） | 路由到该体裁 / 到定稿清扫或交付审查时才读 | 只在该场合才要的细节与流程 | 本 skill **自定** ≤300 行；未越线的都合规 |
 
 **新增内容先问一句**：不用它的那五个体裁，会不会因为它在 `SKILL.md` 里而多读一段？
@@ -177,9 +177,12 @@ description: 撰写、修改或审查科研与工程项目的说服型材料—�
 **改任一侧必须同步另一侧**）；`wording.md §4` 的对称形态清单与「一条判据管全部」
 （§3 只留判据与指针，两处判据同义、必须一起改）。
 
-> 依据：Claude Code 文档 `code.claude.com/docs/en/skills`
-> ——「Add supporting files」的 TIP「Keep `SKILL.md` under 500 lines」；「Skill content lifecycle」
-> 的压缩重挂规则（最近一次调用、每个保留开头 5,000 tokens、共享 25,000 tokens 预算）；
-> 「Frontmatter reference」的 description 与 `when_to_use` 合计截断于 1,536 字符。证据档位：**【官方规范】**。
+> 依据：**渐进披露**三层（元数据 → `SKILL.md` → 附属文件）见 Anthropic 工程文
+> 《Equipping agents for the real world with Agent Skills》（原文 *"the first level of progressive
+> disclosure"* / *"the second level of detail"*）。以下三条见 Claude Code 文档
+> `code.claude.com/docs/en/skills`：「Add supporting files」的 TIP「Keep `SKILL.md` under 500 lines」；
+> 「Skill content lifecycle」的压缩重挂规则（最近一次调用、每个保留开头 5,000 tokens、
+> 共享 25,000 tokens 预算）；「Frontmatter reference」的 description 与 `when_to_use`
+> 合计截断于 1,536 字符。三条证据档位：**【官方规范】**。
 > 「哪些规则算 bootstrap 必须常驻」与上表的「两个层」划分是本 skill 的**推断**，
 > 「≤300 行」是本 skill 的**编辑口径**（非官方数值）——三项都不是官方规范。
