@@ -38,9 +38,17 @@
 
 ## 2. 输入与准备
 
-1. 按主 agent 指定的 `<差异命令>` 获取变更：全量用 `git diff HEAD`，仅暂存区用
-   `git diff --cached`，指定文件使用主 agent 传入的完整命令（路径已包含在 `<差异命令>` 中；
-   仅在主 agent 未包含时追加 `-- <路径...>`）。初始提交（无 HEAD）用 `git diff --cached`。
+1. 按主 agent 指定的 `<差异命令>` 获取变更：**全量用 `git diff --cached`**（`SKILL.md` 步骤 2 要求全量先
+   `git add -A` 再审查，基准即索引），仅暂存区用 `git diff --cached`，指定文件使用主 agent 传入的完整命令
+   （路径已包含在 `<差异命令>` 中；仅在主 agent 未包含时追加 `-- <路径...>`）。
+   **基准必须与提交实际取用的内容一致**，按模式区分（细节见 `git-commands.md` §3）：
+   - 初始提交（无 HEAD）：索引形态用 `git diff --cached`；**指定文件形态用空树基准**
+     `git diff "$(git hash-object -t tree /dev/null)" -- <路径...>`，不能用 `--cached`（会把索引里
+     其它已暂存文件一并报进来）；
+   - amend：裸 `--amend` 用 `git diff HEAD~1 --cached`；`--only -- <路径...>` 用
+     `git diff HEAD~1 -- <路径...>`；`--amend -a`（不能带 pathspec）用 `git diff HEAD~1`；
+     `--include -- <路径...>` 是混合基准：工作区侧 `git diff HEAD~1 -- <路径...>` + 索引侧
+     `git diff HEAD~1 --cached -- . ':(exclude)<路径...>'`。权威表述见 `git-commands.md` §2 形态表。
    **不得自行改用其他模式**——仅暂存区却用 `git diff HEAD` 会把不会提交的改动纳入审查。
    未跟踪文件不在 diff 中，需另取列表：全量用 `git ls-files --others --exclude-standard`，
    指定文件再加 `-- <路径...>`；仅暂存区模式不取。先按 §1 筛选，再对命中的文档 Read 全文。
