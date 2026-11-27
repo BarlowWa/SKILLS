@@ -332,10 +332,34 @@ class CDP:
         # 在途请求状态独立于事件桶：事件桶有 64 条上限，丢弃事件会让计数卡死
         self.network_in_flight: set[str] = set()
         self.network_last_activity: float = 0.0
+        self.dialogs_dismissed: int = 0
+        self.dialog_open: bool = False
 
     def _on_event(self, msg: dict) -> None:
         name = msg.get("method")
         params = msg.get("params") or {}
+        if name == "Page.javascriptDialogOpening":
+            # 原生模态对话框会**挂起页面主线程**：此后 Runtime.evaluate 永不返回、
+            # DOM 也读不到，整条命令会卡到 90s socket 超时（实测 render 在弹窗页上
+            # 100s 都没退出）。所以收到就立刻关掉，连续弹也一次次关。
+            # 顺带满足 headful 下「不替用户点验证码」的边界：对话框不属于该边界，
+            # 留在那里只会把用户正在输入的表单也卡死。
+            # 这里不能用 send()（会递归回这个读循环），但**必须带 id**：
+            # 实测不带 id 的命令会被浏览器直接忽略，对话框会一直开着（等到 100s 也没关）。
+            # 带 id 后响应会出现在后续的读取循环里，双方 id 对不上，被安全忽略。
+            self.dialog_open = True
+            try:
+                self._id += 1
+                self.ws.send_text(json.dumps({"id": self._id, "method": "Page.handleJavaScriptDialog",
+                                              "params": {"accept": True}}))
+                self.dialogs_dismissed += 1
+            except (OSError, WSClosed) as e:
+                # 不向外抛：连接已坏时上层任何一条命令都会失败，这里再抛只会掩盖真正原因。
+                # 但必须留痕 —— 关闭没发出去就意味着对话框还开着，后续会表现为读取超时，
+                # 有这行日志才能把「超时」和「对话框没关掉」对上号。
+                log(f"自动关闭对话框失败（对话框可能仍开着）: {type(e).__name__}: {e}")
+        elif name == "Page.javascriptDialogClosed":
+            self.dialog_open = False
         if name == "Network.requestWillBeSent":
             rid = params.get("requestId")
             if rid:
@@ -353,6 +377,9 @@ class CDP:
                 del bucket[:32]
 
     def send(self, method: str, params: dict | None = None) -> dict:
+        # 对话框打开期间发出的命令会被浏览器**永久排队**（实测：evaluate 在对话框
+        # 期间发出，即使紧接着把对话框关掉，它也再不会返回）——必须等对话框关完再发。
+        self._wait_dialog_closed()
         self._id += 1
         mid = self._id
         self.ws.send_text(json.dumps({"id": mid, "method": method, "params": params or {}}))
@@ -368,6 +395,18 @@ class CDP:
                 self._on_event(msg)
         raise TimeoutError(f"CDP {method} 超时")
 
+    def _wait_dialog_closed(self, timeout: float = 5.0) -> None:
+        """对话框开着就先把它收掉的事件等回来（关闭命令已在 _on_event 里发出）。"""
+        if not self.dialog_open:
+            return
+        deadline = time.monotonic() + timeout
+        while self.dialog_open and time.monotonic() < deadline:
+            try:
+                self.pump()
+            except WSClosed:
+                return
+            time.sleep(0.02)
+
     def pump(self, timeout: float = 0.05) -> None:
         """在等待期间把事件读进来。只在帧边界读：没有可读数据就直接返回，不设短超时。"""
         if not (self.ws.read_buffered() or self.ws.can_read()):
@@ -382,6 +421,55 @@ class CDP:
             return
         if "method" in msg:
             self._on_event(msg)
+
+    def drain(self, budget: float = 1.0) -> bool:
+        """持续收事件直到 socket 安静 budget 秒，返回期间是否收到过任何消息。
+
+        两个用途，都是实测逼出来的：
+          1. **等关闭生效**。`/json/close` 与 `Target.closeTarget` 都是「发出去就算数」，
+             真正的拆除是异步的；不等就走，下一次开标签页会把已关闭的那个顶成活动页。
+          2. **等焦点事件被处理完**。`createTarget` 之后浏览器侧的激活是异步的，
+             若紧接着关掉目标，用户会先看到标签页被抢走、再被还回来。
+        早先「开着就返回」的写法（`while can_read(): recv`）不可靠：keep-alive 下
+        HTTP 侧一次请求可能耗时数秒，而 WS 侧下一帧不一定已经在缓冲区里。
+        """
+        got = False
+        deadline = time.monotonic() + 180
+        quiet_since = None
+        while time.monotonic() < deadline:
+            if self.ws.read_buffered() or self.ws.can_read():
+                try:
+                    self.pump()
+                    got = True
+                    quiet_since = None
+                except WSClosed:
+                    return got
+                continue
+            # 「安静」= 连续 budget 秒没有任何新帧。收到帧就重置，所以忙碌的页面
+            # （持续的网络/页面事件）不会把它拖长到 deadline。
+            now = time.monotonic()
+            quiet_since = now if quiet_since is None else quiet_since
+            if now - quiet_since >= budget:
+                return got
+            time.sleep(0.02)
+        return got
+
+    def set_focus_emulation(self, on: bool = True) -> bool:
+        """让页面以为自己在前台。
+
+        后台标签页里 `document.visibilityState` 是 hidden，页面会据此跳过渲染、
+        不做懒加载（实测：隐藏标签页滚动 N 轮，懒加载列表一条都不出现；
+        开启后与活动标签页完全一致）。这是「不抢焦点」和「抓得到内容」两全的唯一办法。
+
+        失败不致命（页面照旧能读，只是懒加载可能不全），但必须留痕：
+        否则「抓到的正文偏少」会被误判成站点问题。
+        """
+        try:
+            self.send("Emulation.setFocusEmulationEnabled", {"enabled": on})
+            return True
+        except (OSError, WSClosed, RuntimeError, TimeoutError) as e:
+            log(f"焦点仿真开启失败（隐藏标签页可能渲染不全）: {type(e).__name__}: {e}")
+            return False
 
     def events(self, name: str) -> list:
         return self._events.pop(name, [])
@@ -424,29 +512,117 @@ ANTIBOT_PATTERNS = [
 class Session:
     """一次命令生命周期内与浏览器的连接。"""
 
-    def __init__(self, prof: Path, headless: bool, port: int, cdp: CDP, target_id: str, launched: bool):
+    def __init__(self, prof: Path, headless: bool, port: int, cdp: CDP, target_id: str):
         self.prof = prof
         self.headless = headless
         self.port = port
         self.cdp = cdp
         self.target_id = target_id
-        self.launched = launched  # 本进程是否是新起的浏览器（退出时是否负责关）
 
-    # -- 生命周期 --
+    # -- 标签页 --
+
+    def open_tab(self, url: str = "about:blank") -> str:
+        """开一个**不激活**的标签页，返回 targetId。
+
+        为什么不用 `PUT /json/new`：那条捷径会隐含激活新标签页 —— 窗口最小化时被还原到桌面，
+        窗口可见时把用户正在看的标签页顶掉（两种都已实测）。headful 下这就是「用着用着
+        浏览器自己跳到前面」的根源。`Target.createTarget(background=true)` 在 headless 与
+        headful 下都支持，且实测不会改变窗口的激活状态。
+
+        不用 `hidden=true`：那种标签页不在标签栏里，反而截图会超时（实测）。
+        """
+        return self.cdp.send("Target.createTarget", {"url": url, "background": True})["targetId"]
+
+    def attach_tab(self, target_id: str) -> "Session":
+        """连到已存在的标签页，返回同一浏览器上的新 Session（共用 port/prof）。"""
+        info = next((x for x in http_json(self.port, "/json/list") if x["id"] == target_id), None)
+        if info is None:
+            raise RuntimeError(f"标签页已不存在（target {target_id}）")
+        return Session.attach_ws(self.prof, self.headless, self.port, info["webSocketDebuggerUrl"],
+                                 target_id, getattr(self, "version", ""))
+
+    @classmethod
+    def attach_ws(cls, prof: Path, headless: bool, port: int, ws_url: str,
+                  target_id: str, version: str = "") -> "Session":
+        """连上某个标签页并完成所有按 session 生效的设置。
+
+        UA 覆盖与焦点仿真都**按 session 生效**，所以每个新标签页都必须重设一遍：
+        UA 不设，headless 下的探测页会带着 HeadlessChrome 去问站点「我登录了吗」；
+        焦点仿真不开，隐藏标签页会跳过渲染与懒加载。两处调用点共用这一份实现。
+        """
+        cdp = CDP(ws_url)
+        for m in ("Page.enable", "Runtime.enable", "Network.enable"):
+            cdp.send(m)
+        s = cls(prof, headless, port, cdp, target_id)
+        s.version = version
+        ua = default_ua(version)
+        if ua:
+            try:
+                cdp.send("Network.setUserAgentOverride",
+                         {"userAgent": ua, "acceptLanguage": "zh-CN,zh;q=0.9,en;q=0.8"})
+            except (OSError, WSClosed, RuntimeError) as e:
+                # 不致命：站点可能把 headless UA 当机器人，但多数站点仍能抓。
+                log(f"设置 User-Agent 失败（站点可能拒绝 headless UA）: {type(e).__name__}: {e}")
+        cdp.set_focus_emulation(True)
+        return s
+
+    @property
+    def headless(self) -> bool:
+        """浏览器是不是 headless。
+
+        不能直接沿用调用方传的 `--headful` 语义：附着到**已经在跑**的浏览器时，
+        真实模式取决于它是怎么起来的，调用方要什么并不作数（老代码这里恒为 True，
+        导致 `login --headful` 附着时根本不会把页面显示出来）。
+        """
+        return bool((getattr(self, "_meta", {}) or {}).get("headless"))
+
+    @headless.setter
+    def headless(self, v) -> None:
+        self._meta = dict(getattr(self, "_meta", {}) or {})
+        self._meta["headless"] = bool(v)
+
+    def ensure_capturable(self) -> None:
+        """截图前确保窗口处于可捕获状态。
+
+        最小化窗口的截图**不可靠**：实测同一标签页连续截两张，第二张会挂到 90s socket
+        超时；换 `fromSurface:false` 也只是碰运气。而还原窗口（CDP setWindowBounds）
+        实测**不抢前台**（前台窗口句柄不变），所以只在你明确要图时做这一步。
+        """
+        if self.headless:
+            return
+        try:
+            win = self.cdp.send("Browser.getWindowForTarget")
+            if win.get("bounds", {}).get("windowState") == "minimized":
+                self.cdp.send("Browser.setWindowBounds",
+                              {"windowId": win["windowId"], "bounds": {"windowState": "normal"}})
+                log("窗口处于最小化，已还原以便截图（不会抢前台焦点）")
+        except (OSError, WSClosed, RuntimeError, TimeoutError, KeyError) as e:
+            # 还原失败不致命：多半仍能截到图，只是可能挂到超时。留痕以便排查慢截图。
+            log(f"还原窗口以便截图失败: {type(e).__name__}: {e}")
 
     def close_target(self) -> None:
+        """关掉本命令开的标签页，并**等它真的关掉**再走。
+
+        不等的话，下一次 `open_tab` 可能把「正在拆」的这个顶成活动页，用户那边
+        就会出现标签页来回跳。所有收尾路径都走这里，标签页也不会越积越多。
+        收尾阶段失败不再向外抛（进程马上就要退出），但会留一条日志——
+        标签页漏关是累积性问题，没有痕迹就无从发现。
+        """
         try:
-            http_json(self.port, f"/json/close/{self.target_id}")
-        except Exception:
-            pass
-        self.cdp.close()
+            self.cdp.send("Target.closeTarget", {"targetId": self.target_id})
+            self.cdp.drain(0.5)
+        except (OSError, WSClosed, RuntimeError, TimeoutError) as e:
+            log(f"关闭标签页失败（可能残留一个页面）: {type(e).__name__}: {e}")
+        finally:
+            self.cdp.close()
 
     def close_browser(self) -> None:
         """优雅关闭整个浏览器 —— 必须走 CDP Browser.close，不能用 kill。"""
         try:
             self.cdp.send("Browser.close")
-        except Exception:
-            pass
+        except (OSError, WSClosed, RuntimeError, TimeoutError) as e:
+            # 优雅关闭失败要留痕：接下来只能靠用户手动关，而手动关窗会丢登录态。
+            log(f"优雅关闭失败（请勿直接结束进程，会丢登录态）: {type(e).__name__}: {e}")
         self.cdp.close()
 
 
@@ -480,6 +656,19 @@ def _check_extra_args(extra_args: list[str]) -> None:
                 f"等于让任意进程接管浏览器调试口", code=4)
 
 
+def detect_headless(meta: dict, launched: bool, launch_headless: bool) -> bool:
+    """浏览器当前是不是 headless。
+
+    `/json/version` 的 Browser 字段在 headless=new 下通常仍是 "Chrome"，不可靠；
+    可靠的是 User-Agent 里的 HeadlessChrome 标记。都没有时：本进程刚用 headless
+    启动的按 headless 算，否则按有头算（有头浏览器必定有 UA）。
+    """
+    ua = meta.get("User-Agent", "")
+    if ua:
+        return "HeadlessChrome" in ua
+    return bool(launched and launch_headless)
+
+
 def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str]) -> "subprocess.Popen":
     _check_extra_args(extra_args)
     port_file = devtools_port_file(prof)
@@ -500,17 +689,46 @@ def _launch_chrome(chrome: str, prof: Path, headless: bool, extra_args: list[str
         "--disable-gpu",
         "--window-size=1440,900",
     ]
+    # 后台标签页会被 Chrome 降频（定时器推迟、渲染让路），抓 SPA 时这不是优化而是缺陷。
+    # 现在所有抓取都在不激活的标签页里做（见 Session.open_tab），必须关掉这几项降频。
+    args += [
+        "--disable-background-timer-throttling",
+        "--disable-renderer-backgrounding",
+        "--disable-backgrounding-occluded-windows",
+        # 窗口被别的窗口盖住时 Chrome 会按「遮挡即不可见」停掉渲染。
+        # 用户并行干活时这几乎是常态，关掉它抓取结果才与窗口是否在前台无关。
+        "--disable-features=CalculateNativeWinOcclusion",
+    ]
     if headless:
         args.append("--headless=new")
     args += extra_args
-    args.append("about:blank")
+    # 不传 URL：以 about:blank 启动会**激活**一个标签页并抢走前台窗口（实测）。
+    # 反正下面 ensure_session 会自己开一个不激活的标签页。
     kwargs = dict(stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if IS_WINDOWS:
         # 独立进程组：父进程退出后浏览器继续活着（登录态要跨调用保持）
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
     else:
         kwargs["start_new_session"] = True
-    return subprocess.Popen(args, **kwargs)
+    proc = subprocess.Popen(args, **kwargs)
+    # UA 覆盖是**跨次启动持久**的：一旦某个进程给浏览器设过 Network.setUserAgentOverride，
+    # 之后即使不设，/json/version 报出来也还是覆盖值。而 headless 的真实身份只体现在
+    # 默认 UA 的 HeadlessChrome 标记上（Browser 字段仍是 "Chrome"），覆盖过就再看不出来。
+    # 实测 `--user-agent=`（空值）**不还原**，反而让 UA 变成空串；只能显式写回默认值。
+    # 单条命令内部仍会按需覆盖 UA（见 Session.attach_ws），不受影响。
+    v = probe_version(prof)
+    ua = headless_ua(v.get("Browser", "")) if headless else default_ua(v.get("Browser", ""))
+    if not ua:
+        return proc  # 拿不到版本号就无从还原；detect_headless 会回落到「本进程怎么起的」
+    try:
+        b = CDP(v["webSocketDebuggerUrl"])
+        try:
+            b.send("Network.setUserAgentOverride", {"userAgent": ua})
+        finally:
+            b.close()
+    except (OSError, WSClosed, RuntimeError, TimeoutError, KeyError) as e:
+        log(f"还原默认 User-Agent 失败（headless 判定可能不准）: {type(e).__name__}: {e}")
+    return proc
 
 
 def _wait_port(prof: Path, timeout: float = 30.0, proc: "subprocess.Popen | None" = None) -> int:
@@ -564,23 +782,21 @@ def ensure_session(args, headless: bool | None = None, force_headful: bool = Fal
             log(f"就绪，端口 {port}")
 
     meta = http_json(port, "/json/version")
-    version = meta.get("Browser", "?")
-    target = http_json(port, "/json/new?about:blank", method="PUT")
-    cdp = CDP(target["webSocketDebuggerUrl"])
-    for m in ("Page.enable", "Runtime.enable", "Network.enable"):
-        cdp.send(m)
-    # 统一去掉 "HeadlessChrome" 特征：headless 默认 UA 会被部分站点直接拒。
-    # 放在这里而不是某个子命令里，保证所有命令一致。
-    ua = default_ua(version)
-    if ua:
-        try:
-            cdp.send("Network.setUserAgentOverride",
-                     {"userAgent": ua, "acceptLanguage": "zh-CN,zh;q=0.9,en;q=0.8"})
-        except Exception:
-            pass
-    sess = Session(prof, headless, port, cdp, target["id"], launched)
-    sess.version = version
-    return sess
+    # 用「不激活」的方式开工作标签页：冷启动、附着到已有浏览器都一样。
+    # 逐个命令新建、命令结束就关（Session.close_target），不会越积越多。
+    bootstrap = CDP(meta["webSocketDebuggerUrl"])
+    try:
+        target_id = bootstrap.send("Target.createTarget", {"url": "about:blank", "background": True})["targetId"]
+    finally:
+        bootstrap.close()
+    info = next((t for t in http_json(port, "/json/list") if t["id"] == target_id), None)
+    if info is None:  # 刚建好的标签页立刻消失（用户手动关掉 / 崩溃），没法继续
+        die(f"新建的工作标签页已消失（target {target_id}）")
+    # 是否 headless 以浏览器自报为准：附着到已有浏览器时，真实模式未必等于调用方要的那个。
+    is_headless = detect_headless(meta, launched, launched and (headless and not force_headful))
+    # 使能域、统一去掉 "HeadlessChrome" 特征、让隐藏标签页照常渲染 —— 与探测标签页共用一份实现。
+    return Session.attach_ws(prof, is_headless, port, info["webSocketDebuggerUrl"],
+                             target_id, meta.get("Browser", "?"))
 
 
 # ----------------------------------------------------------------------------- 页面操作
@@ -591,6 +807,25 @@ def default_ua(version: str) -> str:
         return ""
     return (f"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             f"(KHTML, like Gecko) Chrome/{m.group(1)}.0.0.0 Safari/537.36")
+
+
+def headless_ua(version: str) -> str:
+    """headless 模式下的默认 UA —— 用来在启动时**还原**它，见 _launch_chrome。"""
+    return default_ua(version).replace("Chrome/", "HeadlessChrome/", 1)
+
+
+def probe_version(prof: Path, timeout: float = 20.0) -> dict:
+    """等浏览器起来并返回 /json/version（拿不到返回空 dict）。"""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        port = read_devtools_port(prof)
+        if port and port_alive(port):
+            try:
+                return http_json(port, "/json/version")
+            except Exception:
+                pass
+        time.sleep(0.1)
+    return {}
 
 
 def strip_dom(html: str) -> str:
@@ -691,6 +926,10 @@ def nav(sess: Session, url: str, wait: str, timeout: float,
     reached = False          # 等待条件是否真的达成（超时退出时为 False）
     while time.monotonic() < deadline:
         cdp.pump(0.05)
+        # --wait load 下，load 事件可能在 evaluate 里一并读到；但对话框若随后弹出，
+        # 必须先把关闭命令的响应等回来，否则后面读 DOM 的 evaluate 会永久排队。
+        if cdp.dialog_open:
+            cdp._wait_dialog_closed()
         now = time.monotonic()
         if cdp._events.get("Page.loadEventFired"):
             if not load_fired:
@@ -769,6 +1008,7 @@ def scroll_bottom(sess: Session, max_rounds: int = 12) -> int:
 
 
 def screenshot(sess: Session) -> bytes:
+    sess.ensure_capturable()
     res = sess.cdp.send("Page.captureScreenshot", {"format": "png"})
     return base64.b64decode(res["data"])
 
@@ -1198,42 +1438,38 @@ def probe_login_url(sess: Session, url: str, domain: str) -> dict | None:
 
     为什么要独立标签页：当前标签页可能正显示二维码，重新导航会把它刷掉，
     用户的扫码就白做了。探测页只读、用完即关。
+
+    标签页以 background 方式创建（不激活），所以不会把用户正在看的页面顶掉。
     """
-    target = None
+    probe = None
     try:
-        target = http_json(sess.port, "/json/new?about:blank", method="PUT")
-        probe_cdp = CDP(target["webSocketDebuggerUrl"])
-        try:
-            for m in ("Page.enable", "Runtime.enable", "Network.enable"):
-                probe_cdp.send(m)
-            probe = Session(sess.prof, sess.headless, sess.port, probe_cdp, target["id"], False)
-            ua = default_ua(getattr(sess, "version", ""))
-            if ua:
-                try:
-                    probe_cdp.send("Network.setUserAgentOverride",
-                                   {"userAgent": ua, "acceptLanguage": "zh-CN,zh;q=0.9,en;q=0.8"})
-                except Exception:
-                    pass
-            nav(probe, url, "load", 15)
-            return login_state(probe, domain)
-        finally:
-            probe_cdp.close()
+        tid = sess.open_tab("about:blank")
+        probe = sess.attach_tab(tid)
+        nav(probe, url, "load", 15)
+        return login_state(probe, domain)
     except Exception as e:
         log(f"探测登录状态失败（可忽略）: {type(e).__name__}: {e}")
         return None
     finally:
-        # 无论成功失败都要关掉探测标签页，否则每次轮询都会漏一个
-        if target:
-            try:
-                http_json(sess.port, f"/json/close/{target['id']}")
-            except Exception:
-                pass
+        # 无论成功失败都要关掉探测标签页，否则每次轮询都会漏一个。
+        # 关闭与「等它真的关掉」都在 close_target 里。
+        if probe is not None:
+            probe.close_target()
 
 
 def cmd_login(args) -> int:
     # 登录期间浏览器必须活着，且脚本退出后要保持 —— headless 也能渲染二维码，
     # 靠截图交给模型看；headful 用 --headful 显式开。
     sess = ensure_session(args, headless=True, force_headful=_force_headful(args))
+    # 要用户动手过闸时，得让人**看得见**这个标签页：headful 下把页面显示出来
+    # （窗口最小化时这会还原窗口，但不会抢别的应用的前台焦点），并把它切成活动标签页。
+    # 抓取类命令不做这一步——它们不需要用户看，硬显示就会打扰并行工作。
+    if _force_headful(args) and not sess.headless:
+        try:
+            sess.cdp.send("Page.bringToFront")
+        except (OSError, WSClosed, RuntimeError, TimeoutError) as e:
+            # 显示不出来也不影响判定：截图照样能交给人看，只是用户得多点一下窗口。
+            log(f"无法把登录页切到前台（用户可能需手动切窗口）: {type(e).__name__}: {e}")
     domain = hint_from_url(args.url)
     shot_path = Path(args.shot or (Path.home() / ".claude" / "chrome-bridge" / "login-shot.png"))
     try:
@@ -1263,7 +1499,13 @@ def cmd_login(args) -> int:
         while time.monotonic() < deadline:
             time.sleep(args.interval)
             attempts += 1
-            st = login_state(sess, domain)
+            try:
+                st = login_state(sess, domain)
+            except TimeoutError:
+                # 页面主线程被挂住（对话框没退、或者站点脚本死循环）时，单次探测卡死
+                # 不该把整条命令拖垮：把它当成「本轮没结论」，下一轮再来。
+                log(f"第 {attempts} 轮读取登录页超时，继续轮询")
+                continue
             last = st
             ok, why = judge_login(st)
             # 当前标签页通常停在登录页（尤其是扫码页），站点不会主动刷新它。
@@ -1291,12 +1533,15 @@ def cmd_login(args) -> int:
                           "text_has_login": last["text_has_login"] if last else None,
                           "logged_in_marker": last["logged_in_marker"] if last else None,
                           "session_hit": last["session_hit"] if last else [],
-                          "cookies": sorted(last["cookies"]) if last else []},
+                          "cookies": sorted(last["cookies"]) if last else [],
+                          "dialogs_dismissed": sess.cdp.dialogs_dismissed},
                          ensure_ascii=False))
         return 2
     finally:
         sess.close_target()
-        # 不调用 Browser.close：登录态要跨命令保留，浏览器继续常驻
+        # 不调用 Browser.close：登录态要跨命令保留，浏览器继续常驻。
+        # close_target 只关本命令开的那个标签页；headful 下用户过完闸，
+        # 不会留下一个空白登录页杵在标签栏里。
 
 
 def cmd_download(args) -> int:
@@ -1354,8 +1599,16 @@ def cmd_close(args) -> int:
             pass
         return 0
     with ProfileLock(prof):  # 与「启动」互斥：避免 close 和冷启动撞车
-        target = http_json(port, "/json/new?about:blank", method="PUT")
-        cdp = CDP(target["webSocketDebuggerUrl"])
+        # 以前这里用 /json/new 造一个临时标签页来发 Browser.close —— 那会激活标签页，
+        # 用户点了「关闭」反而看到窗口被抬起来。浏览器级命令直接连 browser 端点即可。
+        ws = devtools_ws_path(prof)
+        if not ws:
+            v = http_json(port, "/json/version").get("webSocketDebuggerUrl", "")
+            ws = v.split("/devtools/", 1)[1] if "/devtools/" in v else ""
+            ws = "/devtools/" + ws.lstrip("/") if ws else ""
+        if not ws:
+            die("拿不到 browser 级 WebSocket 路径（DevToolsActivePort 与 /json/version 都没有）")
+        cdp = CDP(f"ws://127.0.0.1:{port}{ws}")
         try:
             cdp.send("Browser.close")
             log("已优雅关闭（登录态已落盘）")

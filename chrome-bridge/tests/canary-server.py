@@ -86,6 +86,30 @@ FLOW_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>登录闸
 <button id="submit" type="submit">登录</button></form>
 <p>验证码 1234</p></body></html>"""
 
+# 加载后自弹对话框。真实站点的登录页/引导页会这么干（"请先扫码登录"之类），
+# 而原生模态对话框会把页面主线程挂起：任何一次 Runtime.evaluate 都不会返回，
+# 旧实现因此会一直卡到 90s socket 超时。
+DIALOG_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>对话框页</title></head>
+<body><h1>请扫码登录</h1><p>DIALOG-PAGE-BODY</p>
+<script>
+window.addEventListener('load', function(){ alert('请先扫码登录'); });
+</script></body></html>"""
+
+# 登录页 + 自弹对话框。真站的登录页常这么干（"请先扫码登录"引导弹窗），
+# 而 chrome-bridge 每轮都要读 DOM 判登录态 —— 对话框如果没被自动关掉，
+# 每次读取都会挂到 socket 超时，用户完全没法在页面上操作。
+DIALOG_LOGIN_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>弹窗登录页</title></head>
+<body><h1>请扫码登录</h1>
+<form id="f" method="POST" action="/do_login">
+  <label>账号 <input id="user" name="user" autocomplete="off"></label>
+  <label>密码 <input id="pass" name="pass" type="password"></label>
+  <button id="submit" type="submit">登录</button>
+</form>
+<p>LOGIN-PAGE-BODY-OK</p>
+<script>
+window.addEventListener('load', function(){ alert('请先扫码登录'); });
+</script></body></html>"""
+
 # load 后发起一个慢请求；用于验证 networkidle 必须等在途请求完成（N7）
 SLOW_API_HTML = """<!doctype html><html><head><meta charset="utf-8"><title>慢接口</title></head>
 <body><h1>慢接口</h1><div id="result">WAITING</div>
@@ -159,6 +183,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._send(200, LAZY_HTML)
         elif path == "/flow":
             self._send(200, FLOW_HTML)
+        elif path == "/dialog":
+            self._send(200, DIALOG_HTML)
+        elif path == "/dialog-login":
+            self._send(200, DIALOG_LOGIN_HTML)
         elif path == "/slow-api":
             self._send(200, SLOW_API_HTML)
         elif path == "/slow-abort":

@@ -7,7 +7,7 @@
 ```bash
 python tests/canary-server.py      # 起服务（保持前台，另开一个终端）
 python tests/e2e.py                # 端到端 11 项
-python tests/regression.py         # 缺陷回归 36 项（N5 用循环跑 3 个 flag，故运行时多于源码里的 check 调用数）
+python tests/regression.py         # 缺陷回归 57 项（N5 用循环跑 3 个 flag，故运行时多于源码里的 check 调用数）
 python tests/login-e2e.py          # 登录闸门完整生命周期
 ```
 
@@ -24,7 +24,16 @@ python tests/login-e2e.py          # 登录闸门完整生命周期
   emoji 输出、`--headful` 两种写法、`--scroll` 单次导航、`--wait-for` 精确等待与超时语义、
   两类登录误判、**cookie 域名严格匹配（单元层正/反例 + CLI 层正例）**、
   `--field` 两种解析、**`--chrome-arg` 危险 flag 拒绝**、**相对 profile 路径可用**、
-  **`networkidle` 等在途请求完成（慢响应 + abort 两条路径）**。
+  **`networkidle` 等在途请求完成（慢响应 + abort 两条路径）**、
+  **headful 抓取不还原最小化窗口（B5）**、**轮询期间窗口不被反复还原/抢前台（B6）**、
+  **单次抓取不把窗口还原到前台（B6b）**、**页面自弹对话框不挂死命令（B7）**、
+  **轮询探测后标签页数量不增长（N8）**。
+- **不打扰用户的那几条只在 Windows 上跑**：B5/B6/B6b 靠 Win32 观测窗口（`IsIconic` 是否最小化、
+  `GetForegroundWindow` 是否被抢前台）。**不能用页面 `visibilityState` 当判据**——焦点仿真
+  （为了让隐藏标签页照常渲染而开的）会把页面骗成 visible，连探测标签页都报 visible。
+  非 Windows 下这三条会打印一行 FAIL 后跳过，不计入通过数。
+  > B6 的边界：窗口不在前台时，「标签页在标签栏里被换进换出」OS 侧观测不到。
+  > 那一层由结构保证（`open_tab` 一律 `background=True`）与 B6b 共同守住。
 - **登录闸门**：未登录 → 轮询 → 期间登录 → 识别成功。
 
 ## 判据要求（写新用例时遵守）
@@ -49,6 +58,9 @@ python tests/login-e2e.py          # 登录闸门完整生命周期
 | `/lazy` | 滚动才追加内容 |
 | `/slow-api` + `/slow-api-data` | load 后发起慢请求（2.5s 后返回 `SLOW-API-DONE`），验证 networkidle 等在途请求 |
 | `/slow-abort` | 发起慢请求后 abort（触发 `loadingFailed`），验证在途计数能清理 |
+| `/flow` | 登录表单页（含「验证码」字样），供 `fill` 的选择器解析用例使用 |
+| `/dialog` | load 后自弹 `alert`（验证对话框不会挂死命令） |
+| `/dialog-login` | 登录表单 + load 后自弹 `alert`（验证登录轮询不被对话框卡住） |
 | `/file` | 附件下载 |
 | `/api/me` | JSON 登录态（给 cookie 接力验证用） |
 
